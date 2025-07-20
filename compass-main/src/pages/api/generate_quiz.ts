@@ -28,41 +28,15 @@ interface PageContent {
 }
 
 /*──────────────── Config ────────────────*/
-const OPENAI_RESEARCH_MODEL =
-  process.env.OPENAI_RESEARCH_MODEL || 'o3-deep-research';
+
+const OPENAI_RESEARCH_MODEL = 'o3-deep-research';
+
 const MAX_CONTENT_PAGES = 8;     // max sites we scrape in parallel
 const MAX_STEPS = 10;            // max riddles returned
 
 /*──────────────── Helpers ────────────────*/
-async function askOpenAIForJson(
-  prompt: string,
-  maxTokens = 2000,
-  model = OPENAI_RESEARCH_MODEL
-) {
-  const jsonPrompt = `${prompt.trim()}\n\nReturn your response as valid JSON.`;
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: jsonPrompt }],
-      max_tokens: maxTokens,
-      response_format: { type: 'json_object' }
-    })
-  });
 
-  if (!res.ok) {
-    const error = await res.text();
-    console.error('[OpenAI] Error:', error);
-    throw new Error(`OpenAI API error: ${res.status}`);
-  }
-
-  const data = await res.json();
-  return JSON.parse(data.choices[0].message.content);
-}
+const CHAT_FALLBACK_MODEL = 'gpt-4o'; // always chat‑compatible
 
 async function urlExists(url: string): Promise<boolean> {
   try {
@@ -72,13 +46,92 @@ async function urlExists(url: string): Promise<boolean> {
     return false;
   }
 }
-const getDomain = (u: string) => {
+function getDomain(rawUrl: string): string {
   try {
-    return new URL(u).hostname.replace(/^www\./, '');
+    return new URL(rawUrl).hostname.replace(/^www\./, '');
   } catch {
     return '';
   }
-};
+}
+
+/*──────────────── askOpenAIForJson ──────────────────────────*/
+/**
+ * Unified helper that automatically chooses the right OpenAI endpoint
+ * (chat / completions / responses) and always returns parsed JSON.
+ */
+async function askOpenAIForJson(
+  prompt: string,
+  maxTokens = 2000,
+  model = OPENAI_RESEARCH_MODEL
+) {
+  const jsonPrompt = `${prompt.trim()}\n\nReturn only valid JSON.`;
+
+  // 1️⃣ Decide which endpoint to hit
+  const isResponsesOnly =
+    /^o[34].*-deep-research/i.test(model) || model.endsWith('-deep-research');
+
+  const endpoint = isResponsesOnly
+    ? 'https://api.openai.com/v1/responses'
+    : /^o[34]-/.test(model)
+      ? 'https://api.openai.com/v1/completions'
+      : 'https://api.openai.com/v1/chat/completions';
+
+  // 2️⃣ Build the payload
+  const body = isResponsesOnly
+    ? {
+      model,
+      input: jsonPrompt,
+      max_tokens: maxTokens,
+      response_format: { type: 'json_object' }
+    }
+    : endpoint.includes('/completions')
+      ? {
+        model,
+        prompt: jsonPrompt,
+        max_tokens: maxTokens,
+        temperature: 0,
+        response_format: { type: 'json_object' }
+      }
+      : {
+        model,
+        messages: [{ role: 'user', content: jsonPrompt }],
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' }
+      };
+
+  // 3️⃣ Fire the request
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const errTxt = await res.text();
+    console.error('[OpenAI] API error:', errTxt);
+    throw new Error(`OpenAI API error (${res.status})`);
+  }
+
+  const data = await res.json();
+
+  // 4️⃣ Extract raw JSON text
+  const raw = isResponsesOnly
+    ? data.output_text ?? '{}'
+    : data.choices?.[0]?.message?.content ??
+    data.choices?.[0]?.text ??
+    '{}';
+
+  // Remove any stray markdown fences the model might emit
+  const jStart = raw.indexOf('{');
+  const jEnd = raw.lastIndexOf('}');
+  return JSON.parse(raw.slice(jStart, jEnd + 1));
+}
+
+
+
 
 /** Extract page text quickly in Puppeteer‑compatible Stagehand page */
 async function extractPageContent(
