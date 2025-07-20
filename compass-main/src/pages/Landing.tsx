@@ -40,7 +40,7 @@ export const Landing = () => {
             placeholder="what would you like to explore today?"
             onSubmit={handleStartHunt}
             isLoading={isLoading}
-            className="max-w-lg mx-auto"
+            className="max-w-4xl mx-auto"
           />
           
           <p className="text-accent text-sm italic">

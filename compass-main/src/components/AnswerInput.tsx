@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 interface AnswerInputProps {
@@ -28,15 +27,18 @@ export const AnswerInput = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className={cn("relative", className)}>
-      <div className="relative bg-accent/20 rounded-2xl p-6 backdrop-blur-sm">
+    <form onSubmit={handleSubmit} className={cn("relative", className)} style={{ width: '100%', maxWidth: 'none' }}>
+      <style>{`
+        form { max-width: none !important; width: 600px !important; }
+      `}</style>
+      <div className="relative bg-accent/20 rounded-2xl p-8 backdrop-blur-sm min-h-[80px] w-full max-w-2xl">
         <div className="flex items-center gap-3">
           <span className="text-accent-foreground text-lg">›</span>
-          <Input
+          <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
-            className="flex-1 bg-transparent border-none text-accent-foreground placeholder:text-accent-foreground/60 focus-visible:ring-0 text-lg"
+            className="flex-1 bg-transparent border-none outline-none text-accent-foreground placeholder:text-accent-foreground/60 focus:ring-0 focus:outline-none focus:border-none text-sm font-serif"
             disabled={isLoading}
           />
           <Button
