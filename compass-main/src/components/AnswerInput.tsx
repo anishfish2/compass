@@ -38,7 +38,7 @@ export const AnswerInput = ({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
-            className="flex-1 bg-transparent border-none outline-none text-accent-foreground placeholder:text-accent-foreground/60 focus:ring-0 focus:outline-none focus:border-none text-sm font-serif"
+            className="flex-1 bg-transparent border-none outline-none text-accent text-sm italic font-serif placeholder:text-accent placeholder:italic focus:ring-0 focus:outline-none focus:border-none"
             disabled={isLoading}
           />
           <Button

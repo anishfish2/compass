@@ -95,19 +95,6 @@ export const Hunt = () => {
       transition={{ duration: 0.5 }}
       className="min-h-screen bg-gradient-forest flex flex-col"
     >
-      {/* Header */}
-      <div className="p-6">
-        <CompassStar size="sm" className="mx-auto" />
-      </div>
-
-      {/* Progress */}
-      <div className="px-6 mb-8">
-        <ProgressBar
-          currentStep={currentClue + 1}
-          totalSteps={huntData.clues.length}
-          className="justify-center"
-        />
-      </div>
 
       {/* Hint */}
       <div className="px-6 mb-8">
@@ -115,18 +102,23 @@ export const Hunt = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center px-6">
-        <div className="max-w-2xl mx-auto text-center space-y-8">
-          <div className="space-y-6">
-            <p className="text-foreground text-lg md:text-xl leading-relaxed font-serif">
-              {currentClueData.text}
-            </p>
-          </div>
+      <div className="flex-grow flex justify-center px-6">
+        <div className="flex flex-col justify-center items-center w-full max-w-2xl text-center space-y-8 min-h-[calc(100vh-200px)]">
+          <CompassStar size="md" className="mx-auto" />
+          <p className="text-foreground text-lg md:text-xl leading-relaxed font-serif">
+            {currentClueData.text}
+          </p>
 
           <AnswerInput
             placeholder="enter your url here ..."
             onSubmit={handleAnswer}
             isLoading={isLoading}
+          />
+
+          <ProgressBar
+            currentStep={currentClue + 1}
+            totalSteps={huntData.clues.length}
+            className="justify-center"
           />
         </div>
       </div>
