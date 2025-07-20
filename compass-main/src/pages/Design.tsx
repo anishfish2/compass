@@ -66,10 +66,10 @@ const Design: React.FC = () => {
 
   const generateHunt = async () => {
     if (!validateInputs()) return;
-
+  
     setIsGenerating(true);
     setError("");
-
+  
     try {
       const clues: HuntClue[] = customLinks
         .filter(link => link.trim())
@@ -80,25 +80,23 @@ const Design: React.FC = () => {
           answer: "Some answer",
           url,
         }));
-
+  
       const generatedKey = generalTopics.trim().toLowerCase().replace(/\s+/g, "") + Math.floor(Math.random() * 10000);
-
+  
       const { error: insertError } = await supabase.from("hunts").insert([
         { key: generatedKey, info: clues }
       ]);
-
+  
       if (insertError) throw insertError;
-
-      setHuntData(clues);
-
+  
+      // Optional: Set shareable URL to show on screen
       const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
       const shareUrl = `${siteUrl}/hunt?key=${generatedKey}`;
       setShareableUrl(shareUrl);
-
       await navigator.clipboard.writeText(shareUrl);
-
-      console.log("Hunt created with key:", generatedKey);
-      console.log("Shareable URL:", shareUrl);
+  
+      // ✅ Redirect to /hunt?key=...
+      router.push(`/hunt?key=${generatedKey}`);
     } catch (err) {
       console.error("Error generating or saving hunt:", err);
       setError("Failed to save hunt to Supabase.");
@@ -106,6 +104,7 @@ const Design: React.FC = () => {
       setIsGenerating(false);
     }
   };
+  
 
   const handleCopyLink = async () => {
     if (shareableUrl) {
