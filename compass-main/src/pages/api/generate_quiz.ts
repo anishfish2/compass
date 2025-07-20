@@ -59,8 +59,7 @@ function getDomain(rawUrl: string): string {
  * Unified helper that automatically chooses the right OpenAI endpoint
  * (chat / completions / responses) and always returns parsed JSON.
  *
- * ⚠️  Deep‑research models REQUIRE at least one tool
- *     (`web_search_preview` or `mcp`). We provide the minimal one.
+ * ⚠️  Deep‑research models REQUIRE at least one tool.
  */
 async function askOpenAIForJson(
   prompt: string,
@@ -69,7 +68,6 @@ async function askOpenAIForJson(
 ) {
   const jsonPrompt = `${prompt.trim()}\n\nReturn only valid JSON.`;
 
-  // 1️⃣ choose endpoint
   const responsesOnly = /^o[34].*-deep-research$/i.test(model);
   const completionsLike = /^o[34]-/i.test(model) && !responsesOnly;
   const endpoint = responsesOnly
@@ -78,7 +76,6 @@ async function askOpenAIForJson(
       ? 'https://api.openai.com/v1/completions'
       : 'https://api.openai.com/v1/chat/completions';
 
-  // 2️⃣ build payload – specific per endpoint
   const body = responsesOnly
     ? {
       model,
@@ -102,7 +99,6 @@ async function askOpenAIForJson(
         response_format: { type: 'json_object' }
       };
 
-  // 3️⃣ fire request
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -117,7 +113,6 @@ async function askOpenAIForJson(
     throw new Error(`OpenAI API error (${res.status})`);
   }
 
-  // 4️⃣ extract raw JSON text
   const data = await res.json();
   const raw = responsesOnly
     ? data.output_text ?? '{}'
@@ -319,19 +314,24 @@ DO NOT repeat any of these user links: ${links.join(', ') || '(none)'}`,
 
     /*──────────────── 5.  Build riddles (user links first) ───────────*/
     // Helpers
-    const buildRiddle = async (
-      pc: PageContent
-    ): Promise<ScavengerStep | null> => {
+
+    /*──────────────── 5.  Build riddles (user links first) ───────────*/
+    const buildRiddle = async (pc: PageContent): Promise<ScavengerStep> => {
       const potentialAnswers = [
         ...pc.keyFacts.slice(0, 3),
         ...pc.specificContent.slice(0, 3)
-      ].filter(t => t.length > 30 && t.length < 150);
+      ].filter(t => t.length > 20 && t.length < 250);           // relaxed length
 
-      if (!potentialAnswers.length) return null;
+      // Always have something usable
+      const fallbackAnswer =
+        potentialAnswers[0] ?? pc.specificContent[0] ?? pc.keyFacts[0] ?? pc.title;
 
       const domain = getDomain(pc.url);
-      try {
-        const data = await askOpenAIForJson(
+
+      // Ask the model only if we have at least ONE good fact
+      let data: { riddle: string; answer: string; hints: string[] };
+      if (potentialAnswers.length) {
+        data = await askOpenAIForJson(
           `Craft a 3‑4 sentence **poetic** riddle that references:
 - The domain (“${domain}”) explicitly
 - Navigation clues (breadcrumbs / headings) in metaphor
@@ -340,53 +340,57 @@ DO NOT repeat any of these user links: ${links.join(', ') || '(none)'}`,
 Possible facts:
 ${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join('\n')}
 
-Return JSON:
-{
-  "riddle": "...",
-  "answer": "exact text",
-  "hints": [
-    "Visit ${domain}",
-    "Go to the "${pc.title}" page",
-    "Look for: first 4‑5 words of the answer...",
-    "The answer begins with: first 6‑7 words..."
-  ]
-}`,
+Return JSON with keys riddle, answer, hints.`,
           1_200
         );
-
-        const riddleText = data.riddle.toLowerCase();
-        if (
-          !riddleText.includes(domain.toLowerCase()) &&
-          !riddleText.includes(domain.split('.')[0].toLowerCase())
-        ) {
-          data.riddle = `Upon ${domain}'s pages, ${data.riddle}`;
-        }
-
-        return {
-          riddle: data.riddle,
-          answer: data.answer,
-          hints: data.hints,
-          targetUrl: pc.url,
-          pathFromHome: pc.title
-        };
-      } catch (err) {
-        console.error('[hunt] Riddle AI failed, falling back:', err);
-        // basic fallback so user link still appears
-        return {
-          riddle: `Seek knowledge on ${domain}. Traverse to "${pc.title}" and discover its hidden truth.`,
-          answer: potentialAnswers[0] || pc.title,
+      } else {
+        // Generic fallback when no long fact is available
+        data = {
+          riddle: `On ${domain}, within the page “${pc.title}”, lies a phrase worth finding.`,
+          answer: fallbackAnswer,
           hints: [
             `Visit ${domain}`,
-            `Find the page titled “${pc.title}”`,
-            `Scroll until you spot the phrase starting “${(potentialAnswers[0] || pc.title).split(' ').slice(0, 4).join(' ')
-            }…”`,
-            'Copy that sentence exactly'
-          ],
-          targetUrl: pc.url,
-          pathFromHome: pc.title
+            `Open the page titled “${pc.title}”`,
+            'Scan the opening paragraphs for the highlighted phrase',
+            `The answer starts with “${fallbackAnswer.split(' ').slice(0, 6).join(' ')}”`
+          ]
         };
       }
+
+      // Harden against missing fields
+      if (typeof data.riddle !== 'string' || !data.riddle.trim()) {
+        data.riddle = `Upon ${domain}'s pages, uncover the hidden words of “${pc.title}”.`;
+      }
+      if (typeof data.answer !== 'string' || !data.answer.trim()) {
+        data.answer = fallbackAnswer;
+      }
+      if (!Array.isArray(data.hints) || !data.hints.length) {
+        data.hints = [
+          `Visit ${domain}`,
+          `Open “${pc.title}”`,
+          `Look for: ${fallbackAnswer.slice(0, 30)}…`,
+          'Copy that sentence exactly'
+        ];
+      }
+
+      // Ensure the riddle text mentions the domain
+      const riddleText = data.riddle.toLowerCase();
+      if (
+        !riddleText.includes(domain.toLowerCase()) &&
+        !riddleText.includes(domain.split('.')[0].toLowerCase())
+      ) {
+        data.riddle = `Upon ${domain}'s pages, ${data.riddle}`;
+      }
+
+      return {
+        riddle: data.riddle,
+        answer: data.answer,
+        hints: data.hints,
+        targetUrl: pc.url,
+        pathFromHome: pc.title
+      };
     };
+    ;
 
     // 5a. user‑supplied pages first
     for (const pc of allPageContent.filter(c =>
@@ -405,19 +409,7 @@ Return JSON:
       if (step) steps.push(step);
     }
 
-    /*──────────────── 6.  Post‑check: every link included ───────────*/
-    const missing = explicitSeeds.filter(
-      es => !steps.some(s => s.targetUrl === es.specificPage)
-    );
-    if (missing.length) {
-      throw new Error(
-        `Could not generate riddles for provided link(s): ${missing
-          .map(m => m.specificPage)
-          .join(', ')}`
-      );
-    }
-
-    /*──────────────── 7.  Respond ───────────────────────────*/
+    /*──────────────── 6.  Respond ───────────────────────────*/
     return res.json({
       theme: topics,
       instructions:
