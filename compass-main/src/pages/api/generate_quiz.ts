@@ -78,26 +78,26 @@ async function askOpenAIForJson(
 
   const body = responsesOnly
     ? {
-        model,
-        input: jsonPrompt,
-        tools: [{ type: "web_search_preview" }],
-        max_output_tokens: maxTokens,
-        text: { format: { type: "json_object" } },
-      }
+      model,
+      input: jsonPrompt,
+      tools: [{ type: "web_search_preview" }],
+      max_output_tokens: maxTokens,
+      text: { format: { type: "json_object" } },
+    }
     : completionsLike
       ? {
-          model,
-          prompt: jsonPrompt,
-          max_tokens: maxTokens,
-          temperature: 0,
-          response_format: { type: "json_object" },
-        }
+        model,
+        prompt: jsonPrompt,
+        max_tokens: maxTokens,
+        temperature: 0,
+        response_format: { type: "json_object" },
+      }
       : {
-          model,
-          messages: [{ role: "user", content: jsonPrompt }],
-          max_tokens: maxTokens,
-          response_format: { type: "json_object" },
-        };
+        model,
+        messages: [{ role: "user", content: jsonPrompt }],
+        max_tokens: maxTokens,
+        response_format: { type: "json_object" },
+      };
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -334,18 +334,7 @@ DO NOT repeat any of these user links: ${links.join(", ") || "(none)"}`,
       // Ask the model only if we have at least ONE good fact
       let data: { riddle: string; answer: string; hints: string[] };
       if (potentialAnswers.length) {
-        data = await askOpenAIForJson(
-          `Craft a 3‑4 sentence **poetic** riddle that references:
- The domain (“${domain}") explicitly
- Navigation clues (breadcrumbs / headings) in metaphor
- A specific fact below chosen as the “answer"
-
-Possible facts:
-${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join("\n")}
-
-Return JSON with keys riddle, answer, hints.`,
-          1_200,
-        );
+        data = await askOpenAIForJson(`Craft a 3‑4 sentence **poetic** riddle that references: The domain (“${domain}") explicitly, Navigation clues (breadcrumbs / headings) in metaphor, A specific fact below chosen as the “answer" Possible facts: ${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join("\n")} Return JSON with keys riddle, answer, hints.`, 1_200,);
       } else {
         // Generic fallback when no long fact is available
         data = {
