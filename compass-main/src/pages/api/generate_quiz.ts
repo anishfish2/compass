@@ -54,6 +54,7 @@ function getDomain(rawUrl: string): string {
   }
 }
 
+
 /*──────────────── askOpenAIForJson ──────────────────────────*/
 /**
  * Unified helper that automatically chooses the right OpenAI endpoint
@@ -176,7 +177,7 @@ export default async function handler(
 ) {
   if (req.method !== 'POST')
     return res.status(405).json({ error: 'Method not allowed' });
-
+  console.log("im actually begging you to work plase");
   const schema = z.object({
     topics: z.string(),
     links: z.array(z.string()).optional(),
