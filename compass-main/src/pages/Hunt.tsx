@@ -132,7 +132,6 @@ const Hunt = () => {
           setCurrentClue(prev => prev + 1);
           setIsFirstAttempt(true);                // ⬅️ reset for next clue
         } else {
-<<<<<<< HEAD
           const endTime = Date.now();
           const totalTime = Math.floor((endTime - startTime) / 1000);
 
@@ -146,9 +145,7 @@ const Hunt = () => {
               answers: JSON.stringify([...answers, answer])
             }
           });
-=======
-          router.push("/Complete");
->>>>>>> ba8188caf946557bd73ed84c83ff49cc1f847408
+
         }
       }, 3000);
     } else {
@@ -169,7 +166,6 @@ const Hunt = () => {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
-<<<<<<< HEAD
       className={clsx(
         "min-h-screen bg-gradient-forest flex flex-col",
         shake && "animate-shake overflow-hidden"   // 👈 hide both axes while shaking
@@ -178,17 +174,7 @@ const Hunt = () => {
     >
       {showConfetti && (
         <Confetti width={window.innerWidth} height={window.innerHeight} />
-=======
-      className="min-h-screen bg-gradient-forest flex flex-col relative"
-    >
-      {showConfetti && (
-        <Confetti
-          recycle={false}
-          numberOfPieces={400}
-          width={window.innerWidth}
-          height={window.innerHeight}
-        />
->>>>>>> ba8188caf946557bd73ed84c83ff49cc1f847408
+
       )}
 
       {!loaded && !error && (
