@@ -1,3 +1,4 @@
+// File: pages/Landing.tsx
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
@@ -5,10 +6,15 @@ import { CompassStar } from "@/components/CompassStar";
 import { AnswerInput } from "@/components/AnswerInput";
 import { TrailMap } from "@/components/TrailMap";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@supabase/supabase-js";
 
-export const Landing = () => {
+// Supabase setup
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const Landing = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [shareableLink, setShareableLink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [angle, setAngle] = useState(0);
   const targetAngleRef = useRef(0);
@@ -19,60 +25,79 @@ export const Landing = () => {
     router.push("/Design");
   };
 
-  const handleShareableLink = async (link: string) => {
+  const handleShareableLink = async (input: string) => {
     setIsLoading(true);
-    setError(null); // Clear any previous errors
-    
+    setError(null);
+
     try {
-      // Validate URL format first
-      if (!link.trim()) {
-        setError("Please enter a hunt link");
+      const trimmed = input.trim();
+      console.log("Raw user input:", trimmed);
+
+      if (!trimmed) {
+        setError("Please enter a hunt link or key");
         return;
       }
 
-      // Add protocol if missing
-      let urlString = link.trim();
-      if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
-        urlString = 'https://' + urlString;
+      let huntKey = "";
+
+      // Accept pure keys or full URLs
+      const isSimpleKey = /^[a-zA-Z0-9_-]+$/.test(trimmed);
+      if (isSimpleKey) {
+        huntKey = trimmed;
+      } else {
+        let urlString = trimmed;
+        if (!urlString.startsWith("http://") && !urlString.startsWith("https://")) {
+          urlString = "https://" + urlString;
+        }
+
+        let url;
+        try {
+          url = new URL(urlString);
+          huntKey = url.searchParams.get("huntId") || url.searchParams.get("key") || "";
+        } catch (e) {
+          console.warn("Invalid URL format", e);
+          setError("Please enter a valid URL or key");
+          return;
+        }
       }
 
-      let url;
-      try {
-        url = new URL(urlString);
-      } catch (urlError) {
-        setError("Please enter a valid URL");
-        return;
-      }
-      
-      // Parse the shareable link to extract hunt data
-      const huntId = url.searchParams.get("huntId");
-      
-      if (!huntId) {
-        setError("Invalid hunt link - missing hunt ID");
+      if (!huntKey) {
+        setError("Invalid hunt link or missing hunt key");
         return;
       }
 
-      // Navigate to the hunt with the shared data
-      router.push(`/hunt?huntId=${huntId}`);
-      
-    } catch (error) {
-      console.error("Error loading shared hunt:", error);
-      setError("An unexpected error occurred - please try again");
+      console.log("Checking hunt key in Supabase:", huntKey);
+
+      // ✅ Supabase check
+      const { data, error } = await supabase
+        .from("hunts")
+        .select("key")
+        .eq("key", huntKey)
+        .maybeSingle();
+
+      console.log("Supabase response:", { data, error });
+
+      if (!data || error) {
+        setError("Failed to load hunt. Try a different key.");
+        return;
+      }
+
+      router.push(`/hunt?key=${huntKey}`);
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      setError("An unexpected error occurred – please try again");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Clear error when user starts a new submission
   const handleShareableLinkWrapper = async (link: string) => {
-    // Clear any existing error when user tries again
     if (error) {
       setError(null);
     }
     await handleShareableLink(link);
   };
 
-  // Mouse tracking to update target angle
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const compass = compassRef.current;
@@ -93,7 +118,6 @@ export const Landing = () => {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
-  // Spring-like rotation animation toward target angle
   useEffect(() => {
     let animationFrameId: number;
     let velocity = 0;
@@ -155,7 +179,7 @@ export const Landing = () => {
 
         <div className="space-y-6">
           <p className="text-foreground text-lg font-serif italic leading-relaxed max-w-lg mx-auto">
-            Create and share digital scavenger hunts that guide explorers 
+            Create and share digital scavenger hunts that guide explorers
             through curated web destinations with clues and challenges.
           </p>
 
@@ -177,12 +201,12 @@ export const Landing = () => {
 
               <div className="space-y-2">
                 <AnswerInput
-                  placeholder="paste a shareable hunt link here..."
+                  placeholder="enter a hunt key or shareable link..."
                   onSubmit={handleShareableLinkWrapper}
                   isLoading={isLoading}
                   className="max-w-md mx-auto text-base placeholder:text-foreground/50 placeholder:text-md placeholder:italic placeholder:font-serif font-serif"
                 />
-                
+
                 {error && (
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
@@ -200,3 +224,5 @@ export const Landing = () => {
     </div>
   );
 };
+
+export default Landing;
