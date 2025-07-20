@@ -58,9 +58,10 @@ function getDomain(rawUrl: string): string {
 /**
  * Unified helper that automatically chooses the right OpenAI endpoint
  * (chat / completions / responses) and always returns parsed JSON.
+ *
+ * ⚠️  Deep‑research models REQUIRE at least one tool
+ *     (`web_search_preview` or `mcp`). We provide the minimal one.
  */
-
-/*──────────────── askOpenAIForJson ──────────────────────────*/
 async function askOpenAIForJson(
   prompt: string,
   maxTokens = 2_000,
@@ -69,20 +70,37 @@ async function askOpenAIForJson(
   const jsonPrompt = `${prompt.trim()}\n\nReturn only valid JSON.`;
 
   // 1️⃣ choose endpoint
-  const isResponsesOnly = /^o[34].*-deep-research/i.test(model);
-  const endpoint = isResponsesOnly
+  const responsesOnly = /^o[34].*-deep-research$/i.test(model);
+  const completionsLike = /^o[34]-/i.test(model) && !responsesOnly;
+  const endpoint = responsesOnly
     ? 'https://api.openai.com/v1/responses'
-    : /^o[34]-/.test(model)
+    : completionsLike
       ? 'https://api.openai.com/v1/completions'
       : 'https://api.openai.com/v1/chat/completions';
 
-  // 2️⃣ build payload
-  const body = {
-    model,
-    input: jsonPrompt,
-    max_completion_tokens: maxTokens,   // ← rename
-    text: { format: { type: 'json_object' } }
-  };
+  // 2️⃣ build payload – specific per endpoint
+  const body = responsesOnly
+    ? {
+      model,
+      input: jsonPrompt,
+      tools: [{ type: 'web_search_preview' }],
+      max_output_tokens: maxTokens,
+      text: { format: { type: 'json_object' } }
+    }
+    : completionsLike
+      ? {
+        model,
+        prompt: jsonPrompt,
+        max_tokens: maxTokens,
+        temperature: 0,
+        response_format: { type: 'json_object' }
+      }
+      : {
+        model,
+        messages: [{ role: 'user', content: jsonPrompt }],
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' }
+      };
 
   // 3️⃣ fire request
   const res = await fetch(endpoint, {
@@ -101,7 +119,7 @@ async function askOpenAIForJson(
 
   // 4️⃣ extract raw JSON text
   const data = await res.json();
-  const raw = isResponsesOnly
+  const raw = responsesOnly
     ? data.output_text ?? '{}'
     : data.choices?.[0]?.message?.content ??
     data.choices?.[0]?.text ??
@@ -111,10 +129,6 @@ async function askOpenAIForJson(
   const jEnd = raw.lastIndexOf('}');
   return JSON.parse(raw.slice(jStart, jEnd + 1));
 }
-
-
-
-
 
 /** Extract page text quickly in Puppeteer‑compatible Stagehand page */
 async function extractPageContent(
@@ -229,7 +243,7 @@ For EACH page include:
   • "whyRelevant" (why useful for "${topics}")
 ${hints ? `Extra guidance: ${hints}` : ''}
 DO NOT repeat any of these user links: ${links.join(', ') || '(none)'}`,
-      1500
+      1_500
     );
 
     const rawSites = Array.isArray(aiResearch.sites)
@@ -337,7 +351,7 @@ Return JSON:
     "The answer begins with: first 6‑7 words..."
   ]
 }`,
-          1200
+          1_200
         );
 
         const riddleText = data.riddle.toLowerCase();
