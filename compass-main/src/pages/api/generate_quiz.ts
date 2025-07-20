@@ -118,7 +118,7 @@ async function askOpenAIForJson(
 
 /** Extract page text quickly in Puppeteer‑compatible Stagehand page */
 async function extractPageContent(
-  page: Awaited<ReturnType<Stagehand['page']>>,
+  page: Awaited<Stagehand['page']>,
   url: string
 ): Promise<PageContent | null> {
   try {
