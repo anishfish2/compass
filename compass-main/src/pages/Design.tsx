@@ -1,5 +1,5 @@
-// File: pages/Design.tsx
-import { useState, useRef, useEffect } from "react";
+// Updated Design.tsx to match new clue structure from /api/generate_quiz
+import { useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { CompassStar } from "@/components/CompassStar";
@@ -7,34 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { TrailMap } from "@/components/TrailMap";
-import { Loader2, ClipboardCopy } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
-interface HuntClue {
-  id: number;
-  text: string;
-  hint: string;
-  answer: string;
-  url?: string;
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const generateFoodKey = () => {
+  const foods = ["banana", "taco", "bagel", "mango", "donut", "sushi", "noodle", "apple", "carrot", "pizza"];
+  return foods[Math.floor(Math.random() * foods.length)] + Math.floor(Math.random() * 1000);
+};
 
 const Design: React.FC = () => {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
-  const [huntData, setHuntData] = useState<HuntClue[] | null>(null);
   const [customLinks, setCustomLinks] = useState<string[]>([""]);
   const [generalTopics, setGeneralTopics] = useState("");
   const [additionalHints, setAdditionalHints] = useState("");
   const [error, setError] = useState<string>("");
-  const [shareableUrl, setShareableUrl] = useState<string>("");
   const [copied, setCopied] = useState<boolean>(false);
-  const [angle, setAngle] = useState(0);
-  const targetAngleRef = useRef(0);
-  const compassRef = useRef<HTMLDivElement>(null);
 
   const validateInputs = () => {
     const hasCustomLinks = customLinks.some(link => link.trim());
@@ -66,51 +59,49 @@ const Design: React.FC = () => {
 
   const generateHunt = async () => {
     if (!validateInputs()) return;
-  
+
     setIsGenerating(true);
     setError("");
-  
+
     try {
-      const clues: HuntClue[] = customLinks
-        .filter(link => link.trim())
-        .map((url, idx) => ({
-          id: idx,
-          text: `Clue for ${url}`,
-          hint: additionalHints || "",
-          answer: "Some answer",
-          url,
-        }));
-  
-      const generatedKey = generalTopics.trim().toLowerCase().replace(/\s+/g, "") + Math.floor(Math.random() * 10000);
-  
+      const res = await fetch("/api/generate_quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topics: generalTopics,
+          links: customLinks.filter(link => link.trim()),
+          hints: additionalHints
+        })
+      });
+
+      const data = await res.json();
+      const clues = data.hunt;
+      console.log("data: ",data);
+      console.log(clues);
+      if (!clues || clues.length === 0) throw new Error("No clues returned");
+
+      const formattedClues = clues.map((c: any, idx: number) => ({
+        id: idx,
+        text: c.riddle,
+        hint: c.hints?.[0] || "",
+        answer: c.answer,
+        url: c.targetUrl
+      }));
+
+      console.log(formattedClues)
+
+      const generatedKey = generateFoodKey();
       const { error: insertError } = await supabase.from("hunts").insert([
-        { key: generatedKey, info: clues }
+        { key: generatedKey, info: formattedClues }
       ]);
-  
+
       if (insertError) throw insertError;
-  
-      // Optional: Set shareable URL to show on screen
-      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
-      const shareUrl = `${siteUrl}/hunt?key=${generatedKey}`;
-      setShareableUrl(shareUrl);
-      await navigator.clipboard.writeText(shareUrl);
-  
-      // ✅ Redirect to /hunt?key=...
       router.push(`/hunt?key=${generatedKey}`);
     } catch (err) {
       console.error("Error generating or saving hunt:", err);
-      setError("Failed to save hunt to Supabase.");
+      setError("Failed to generate hunt. Please try again.");
     } finally {
       setIsGenerating(false);
-    }
-  };
-  
-
-  const handleCopyLink = async () => {
-    if (shareableUrl) {
-      await navigator.clipboard.writeText(shareableUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -168,23 +159,6 @@ const Design: React.FC = () => {
         >
           {isGenerating ? <><Loader2 className="mr-2 animate-spin" /> Generating...</> : "Generate Hunt"}
         </Button>
-
-        {huntData && (
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl text-foreground">Hunt Generated!</h2>
-            <p className="italic text-foreground/80">Share this link:</p>
-            <div className="flex flex-col items-center space-y-2">
-              <p className="font-mono text-blue-600 underline break-all">{shareableUrl}</p>
-              <Button
-                variant="outline"
-                className="flex items-center gap-2"
-                onClick={handleCopyLink}
-              >
-                <ClipboardCopy className="w-4 h-4" /> {copied ? "Copied!" : "Copy link"}
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

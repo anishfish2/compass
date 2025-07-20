@@ -37,12 +37,17 @@ interface ResearchSite {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /** Ask ChatGPT for JSON, retrying until it actually returns JSON */
-async function askOpenAIForJson(userPrompt: string, maxTokens = 1500, maxTries = 3) {
+async function askOpenAIForJson(
+  userPrompt: string,
+  maxTokens = 1500,
+  maxTries = 3
+) {
   let prompt = userPrompt;
+
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     const res = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',                     // fast + GPT‑4 class quality
-      response_format: { type: 'json_object' }, // tells OpenAI to emit JSON
+      model: 'gpt-4o-mini', // fast + GPT‑4‑class quality
+      response_format: { type: 'json_object' },
       max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -51,12 +56,16 @@ async function askOpenAIForJson(userPrompt: string, maxTokens = 1500, maxTries =
     try {
       return JSON.parse(raw);
     } catch {
-      console.warn(`[hunt] OpenAI reply not JSON (try ${attempt}/${maxTries})`);
-      prompt =
-        `REMINDER: Return ONLY valid JSON. No prose.\n\n` + userPrompt;
+      console.warn(
+        `[hunt] OpenAI reply not JSON (try ${attempt}/${maxTries})`
+      );
+      prompt = `REMINDER: Return ONLY valid JSON. No prose.\n\n` + userPrompt;
     }
   }
-  throw new Error('OpenAI failed to return valid JSON after several attempts.');
+
+  throw new Error(
+    'OpenAI failed to return valid JSON after several attempts.'
+  );
 }
 
 /** HEAD‑request reachability test (follows redirects) */
@@ -80,7 +89,10 @@ function getDomain(url: string): string {
 // ──────────────────────────────────────────
 // Handler
 // ──────────────────────────────────────────
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   if (req.method !== 'POST')
     return res.status(405).json({ error: 'Method not allowed' });
 
@@ -97,14 +109,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       env: 'BROWSERBASE',
       apiKey: process.env.BROWSERBASE_API_KEY,
       projectId: process.env.BROWSERBASE_PROJECT_ID!,
-      modelName: 'gpt-4o-mini', // Stagehand will send tool calls to the same model
+      modelName: 'gpt-4o-mini',
       modelClientOptions: { apiKey: process.env.OPENAI_API_KEY }
     });
     await stagehand.init();
     const page = stagehand.page;
 
     // ─── 1. Ask OpenAI for candidate pages ─────────────────────────
-    const research = await askOpenAIForJson(`
+    const research = (await askOpenAIForJson(
+      `
       Research websites for a scavenger hunt about "${prompt}".
       Find 5 interesting websites with specific pages (not just homepages) that would create an educational journey.
       Each site should have pages that are 1‑2 clicks from the homepage.
@@ -121,7 +134,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         ]
       }
-    `) as { sites: ResearchSite[] };
+      `
+    )) as { sites: ResearchSite[] };
 
     // ─── 2. Keep only reachable pages ─────────────────────────────
     const reachableSites: ResearchSite[] = [];
@@ -139,18 +153,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!reachableSites.length)
-      return res.status(422).json({ error: 'No valid URLs returned – try a different prompt.' });
+      return res
+        .status(422)
+        .json({ error: 'No valid URLs returned – try a different prompt.' });
 
     // ─── 3. Build the hunt steps ──────────────────────────────────
     for (const [idx, site] of reachableSites.entries()) {
       const targetUrl = site.specificPage;
-      console.log(`[hunt] (${idx + 1}/5) Visiting: ${targetUrl}`);
+      console.log(`[hunt] (${idx + 1}/${reachableSites.length}) Visiting: ${targetUrl}`);
 
       try {
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.goto(targetUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 20000
+        });
 
-        const currentDomain = await page.evaluate(
-          () => location.hostname.replace(/^www\./, '')
+        const currentDomain = await page.evaluate(() =>
+          location.hostname.replace(/^www\./, '')
         );
         if (currentDomain !== getDomain(targetUrl))
           throw new Error('Redirected off‑site – skipping.');
@@ -211,7 +230,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             "answer": "…",
             "hints": ["…", "…", "…", "…"]
           }
-        `,
+          `,
           1200
         );
 
@@ -230,7 +249,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await stagehand.close();
 
     if (!steps.length)
-      return res.status(500).json({ error: 'All candidate pages failed – try again.' });
+      return res
+        .status(500)
+        .json({ error: 'All candidate pages failed – try again.' });
 
     // ─── 4. Respond ────────────────────────────────────────────────
     res.json({
@@ -249,8 +270,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (err) {
     console.error('[hunt] Fatal error:', err);
-    res
-      .status(500)
-      .json({ error: err instanceof Error ? err.message : 'Unknown error' });
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Unknown error'
+    });
   }
 }
