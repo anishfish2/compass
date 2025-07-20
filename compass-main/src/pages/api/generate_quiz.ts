@@ -1,11 +1,11 @@
+// ──────────────────────────────────────────
 // src/pages/api/generate_quiz.ts
+// ──────────────────────────────────────────
 import { NextApiRequest, NextApiResponse } from 'next';
 import { z } from 'zod';
 import { Stagehand } from '@browserbasehq/stagehand';
 
-// ──────────────────────────────────────────
-// Types
-// ──────────────────────────────────────────
+/*──────────────── Types ────────────────*/
 interface ResearchSite {
   domain: string;
   specificPage: string;
@@ -13,7 +13,6 @@ interface ResearchSite {
   interestingFact: string;
   whyRelevant: string;
 }
-
 interface ScavengerStep {
   riddle: string;
   answer: string;
@@ -21,7 +20,6 @@ interface ScavengerStep {
   targetUrl: string;
   pathFromHome: string;
 }
-
 interface PageContent {
   url: string;
   title: string;
@@ -29,25 +27,19 @@ interface PageContent {
   specificContent: string[];
 }
 
-// ──────────────────────────────────────────
-// Config
-// ──────────────────────────────────────────
+/*──────────────── Config ────────────────*/
 const OPENAI_RESEARCH_MODEL =
   process.env.OPENAI_RESEARCH_MODEL || 'o3-deep-research';
+const MAX_CONTENT_PAGES = 8;     // max sites we scrape in parallel
+const MAX_STEPS = 10;            // max riddles returned
 
-// ──────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────
+/*──────────────── Helpers ────────────────*/
 async function askOpenAIForJson(
   prompt: string,
   maxTokens = 2000,
   model = OPENAI_RESEARCH_MODEL
 ) {
-  // Always include “json” in the prompt when using json_object response format
-  const jsonPrompt = `${prompt.trim()}
-
-Return your response as valid JSON.`;
-
+  const jsonPrompt = `${prompt.trim()}\n\nReturn your response as valid JSON.`;
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -80,7 +72,6 @@ async function urlExists(url: string): Promise<boolean> {
     return false;
   }
 }
-
 const getDomain = (u: string) => {
   try {
     return new URL(u).hostname.replace(/^www\./, '');
@@ -89,15 +80,13 @@ const getDomain = (u: string) => {
   }
 };
 
-/** Quick content extraction from a single page */
+/** Extract page text quickly in Puppeteer‑compatible Stagehand page */
 async function extractPageContent(
   page: Awaited<ReturnType<Stagehand['page']>>,
   url: string
 ): Promise<PageContent | null> {
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
-
-    // Wait for content to load
     await page.waitForTimeout(1000);
 
     const content = await page.evaluate(() => {
@@ -106,18 +95,16 @@ async function extractPageContent(
           .map(el => el.textContent?.trim() || '')
           .filter(t => t.length > 20 && t.length < 200);
 
-      // Extract factual content
       const facts = getText('p, li, dd, td')
         .filter(t =>
-          /\b(19|20)\d{2}\b/.test(t) || // dates
-          /\$[\d,]+/.test(t) || // money
-          /\d+%/.test(t) || // percentages
-          /\b\d+\s*(million|billion|thousand)\b/i.test(t) || // large numbers
+          /\b(19|20)\d{2}\b/.test(t) ||
+          /\$[\d,]+/.test(t) ||
+          /\d+%/.test(t) ||
+          /\b\d+\s*(million|billion|thousand)\b/i.test(t) ||
           /(first|largest|oldest|founder|created|invented|launched|developed|introduced)/i.test(t)
         )
         .slice(0, 10);
 
-      // Extract specific content
       const specific = getText('p, li, h2, h3, blockquote')
         .filter(t => !/(cookie|privacy|subscribe|newsletter|sign up)/i.test(t))
         .slice(0, 15);
@@ -137,9 +124,7 @@ async function extractPageContent(
   }
 }
 
-// ──────────────────────────────────────────
-// Main Handler
-// ──────────────────────────────────────────
+/*──────────────── Main handler ────────────────*/
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -152,13 +137,35 @@ export default async function handler(
     links: z.array(z.string()).optional(),
     hints: z.string().optional()
   });
+  const { topics, links = [], hints } = schema.parse(req.body);
 
-  const { topics, links, hints } = schema.parse(req.body);
   const steps: ScavengerStep[] = [];
-
   let stagehand: Stagehand | null = null;
 
+  /*──────────────── 0.  Normalise & validate user‑supplied links ───────*/
+  const explicitSeeds: ResearchSite[] = [];
+  if (links.length) {
+    console.log('[hunt] Validating user‑supplied links...');
+    for (const raw of links) {
+      let url = raw.trim();
+      if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+      if (!(await urlExists(url))) {
+        return res.status(422).json({
+          error: `Provided link is not reachable: ${url}`
+        });
+      }
+      explicitSeeds.push({
+        domain: getDomain(url),
+        specificPage: url,
+        pathFromHome: '',
+        interestingFact: '',
+        whyRelevant: 'User‑provided link'
+      });
+    }
+  }
+
   try {
+    /*──────────────── 1.  Stagehand boot ────────────────────────────*/
     stagehand = new Stagehand({
       env: 'BROWSERBASE',
       apiKey: process.env.BROWSERBASE_API_KEY,
@@ -169,163 +176,119 @@ export default async function handler(
     await stagehand.init();
     const page = stagehand.page;
 
-    /* ───────────────── 1. Research Sites ──────────────────────────── */
-    console.log('[hunt] Starting research for:', topics);
+    /*──────────────── 2.  AI research for additional sites ───────────*/
+    console.log('[hunt] Researching additional sites for topic:', topics);
 
-    const research = await askOpenAIForJson(
+    const aiResearch = await askOpenAIForJson(
       `You are a meticulous research assistant. 
 Return 8‑10 **non‑homepage** URLs (Wikipedia, documentation, company history, tutorials) that:
 - Contain verifiable facts, dates, or statistics
-- Are publicly accessible (no paywalls, logins, or heavy JavaScript gates)
+- Are publicly accessible (no paywall / login)
 - Prefer HTTPS
-
 For EACH page include:
-  • "domain": base domain only
-  • "specificPage": full URL (must start with "http")
-  • "pathFromHome": breadcrumbs / nav trail (if guessable)
-  • "interestingFact": a single factual nugget from the page (30‑80 chars)
-  • "whyRelevant": why it matters for the topic "${topics}"
-
-${links?.length ? `You **must** incorporate these seed links if valid: ${links.join(', ')}` : ''}
-${hints ? `Extra guidance: ${hints}` : ''}`,
+  • "domain"
+  • "specificPage"
+  • "pathFromHome"
+  • "interestingFact"
+  • "whyRelevant" (why useful for "${topics}")
+${hints ? `Extra guidance: ${hints}` : ''}
+DO NOT repeat any of these user links: ${links.join(', ') || '(none)'}`,
       1500
     );
 
-    const rawSites = research.sites || research.scavenger_hunt_sites || [];
+    const rawSites = Array.isArray(aiResearch.sites)
+      ? aiResearch.sites
+      : aiResearch.scavenger_hunt_sites || [];
 
-    if (!Array.isArray(rawSites)) {
-      console.error('[hunt] Invalid response format:', research);
-      throw new Error('Invalid response from AI – please try again');
-    }
-
-    const seeds: ResearchSite[] = [];
-
-    // Validate URLs quickly
-    const urlChecks = rawSites.map(async site => {
-      let pageUrl = site.specificPage || site.url || '';
-      if (!pageUrl || typeof pageUrl !== 'string') return null;
-
-      if (!pageUrl.startsWith('http')) {
-        pageUrl = `https://${pageUrl}`;
-      }
+    const additionalSeeds: ResearchSite[] = [];
+    for (const site of rawSites) {
+      let pageUrl =
+        typeof site.specificPage === 'string'
+          ? site.specificPage
+          : typeof site.url === 'string'
+            ? site.url
+            : '';
+      if (!pageUrl) continue;
+      if (!/^https?:\/\//i.test(pageUrl)) pageUrl = `https://${pageUrl}`;
 
       const exists = await urlExists(pageUrl);
       if (exists) {
-        return {
+        if (
+          explicitSeeds.some(s => s.specificPage === pageUrl) ||
+          additionalSeeds.some(s => s.specificPage === pageUrl)
+        )
+          continue; // de‑dupe
+        additionalSeeds.push({
           domain: getDomain(pageUrl),
           specificPage: pageUrl,
           pathFromHome: site.pathFromHome || site.path || '',
           interestingFact: site.interestingFact || site.description || '',
           whyRelevant: site.whyRelevant || site.reason || ''
-        };
+        });
       }
-      console.log('[hunt] URL not accessible:', pageUrl);
-      return null;
-    });
-
-    const validatedSites = await Promise.all(urlChecks);
-    for (const site of validatedSites) {
-      if (site) seeds.push(site);
     }
 
-    if (!seeds.length) {
-      return res.status(422).json({
-        error: 'No accessible websites found. Try a different topic.'
-      });
-    }
+    /*──────────────── 3.  Consolidate seeds (user links first) ───────*/
+    const seeds: ResearchSite[] = [
+      ...explicitSeeds,
+      ...additionalSeeds
+    ];
 
-    console.log(`[hunt] Found ${seeds.length} valid sites`);
+    console.log(
+      `[hunt] Total valid seeds: ${seeds.length} (${explicitSeeds.length} provided by user)`
+    );
 
-    /* ───────────────── 2. Extract Content ──────────────────────────── */
-    const allPageContent: PageContent[] = [];
+    if (!seeds.length)
+      return res
+        .status(422)
+        .json({ error: 'No accessible websites found for this topic.' });
 
-    // Process pages in parallel with timeout
-    const contentPromises = seeds.slice(0, 8).map(async seed => {
-      console.log('[hunt] Extracting content from:', seed.domain);
-      try {
+    /*──────────────── 4.  Scrape pages (ensure all user links) ───────*/
+    const scrapeTargets = [
+      ...seeds.slice(0, Math.max(MAX_CONTENT_PAGES, explicitSeeds.length))
+    ];
+    const allPageContent: (PageContent & { seed: ResearchSite })[] = [];
+
+    await Promise.all(
+      scrapeTargets.map(async seed => {
+        console.log('[hunt] Extracting:', seed.specificPage);
         const content = await extractPageContent(page, seed.specificPage);
         if (
           content &&
-          (content.keyFacts.length > 0 || content.specificContent.length > 0)
+          (content.keyFacts.length || content.specificContent.length)
         ) {
-          return { ...content, seed };
+          allPageContent.push({ ...content, seed });
         }
-      } catch (err) {
-        console.error('[hunt] Failed to extract:', seed.specificPage, err);
-      }
-      return null;
-    });
+      })
+    );
 
-    const results = await Promise.all(contentPromises);
+    if (!allPageContent.length)
+      return res
+        .status(500)
+        .json({ error: 'Failed to extract usable content from seeds.' });
 
-    for (const result of results) {
-      if (result) {
-        allPageContent.push(result);
-      }
-    }
-
-    if (allPageContent.length < 2) {
-      console.log('[hunt] Not enough content extracted, trying direct approach');
-
-      // Fallback: Try to get content directly from first few seeds
-      for (const seed of seeds.slice(0, 5)) {
-        try {
-          await page.goto(seed.specificPage, {
-            waitUntil: 'domcontentloaded',
-            timeout: 10000
-          });
-
-          const pageInfo = await page.evaluate(() => {
-            const txt = (sel: string) =>
-              Array.from(document.querySelectorAll(sel))
-                .map(el => el.textContent?.trim() || '')
-                .filter(t => t && t.length > 30 && t.length < 200);
-
-            return {
-              title: document.title,
-              keyFacts: txt('p, li, h2, h3')
-                .filter(t => /\b(19|20)\d{2}\b/.test(t) || /\d+/.test(t))
-                .slice(0, 5),
-              specificContent: txt('p, li').slice(0, 10)
-            };
-          });
-
-          if (
-            pageInfo.keyFacts.length > 0 ||
-            pageInfo.specificContent.length > 0
-          ) {
-            allPageContent.push({
-              url: seed.specificPage,
-              title: pageInfo.title,
-              keyFacts: pageInfo.keyFacts,
-              specificContent: pageInfo.specificContent
-            });
-          }
-        } catch (err) {
-          console.error('[hunt] Fallback error:', err);
-        }
-      }
-    }
-
-    /* ───────────────── 3. Generate Riddles ──────────────────────────── */
-    for (const pageContent of allPageContent) {
+    /*──────────────── 5.  Build riddles (user links first) ───────────*/
+    // Helpers
+    const buildRiddle = async (
+      pc: PageContent
+    ): Promise<ScavengerStep | null> => {
       const potentialAnswers = [
-        ...pageContent.keyFacts.slice(0, 3),
-        ...pageContent.specificContent.slice(0, 3)
-      ].filter(a => a && a.length > 30 && a.length < 150);
+        ...pc.keyFacts.slice(0, 3),
+        ...pc.specificContent.slice(0, 3)
+      ].filter(t => t.length > 30 && t.length < 150);
 
-      if (!potentialAnswers.length) continue;
+      if (!potentialAnswers.length) return null;
 
+      const domain = getDomain(pc.url);
       try {
-        const domain = getDomain(pageContent.url);
-        const riddleData = await askOpenAIForJson(
+        const data = await askOpenAIForJson(
           `Craft a 3‑4 sentence **poetic** riddle that references:
 - The domain (“${domain}”) explicitly
 - Navigation clues (breadcrumbs / headings) in metaphor
 - A specific fact below chosen as the “answer”
 
 Possible facts:
-${potentialAnswers.map((a, i) => `${i + 1}. "${a}"`).join('\n')}
+${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join('\n')}
 
 Return JSON:
 {
@@ -333,46 +296,79 @@ Return JSON:
   "answer": "exact text",
   "hints": [
     "Visit ${domain}",
-    "Go to the "${pageContent.title}" page",
+    "Go to the "${pc.title}" page",
     "Look for: first 4‑5 words of the answer...",
     "The answer begins with: first 6‑7 words..."
   ]
 }`,
-          1400
+          1200
         );
 
-        // Ensure riddle mentions the domain
-        const riddleText = riddleData.riddle.toLowerCase();
-        const domainMentioned =
-          riddleText.includes(domain.toLowerCase()) ||
-          riddleText.includes(domain.split('.')[0].toLowerCase());
-
-        if (!domainMentioned) {
-          riddleData.riddle = `Upon ${domain}'s digital pages, ${riddleData.riddle}`;
+        const riddleText = data.riddle.toLowerCase();
+        if (
+          !riddleText.includes(domain.toLowerCase()) &&
+          !riddleText.includes(domain.split('.')[0].toLowerCase())
+        ) {
+          data.riddle = `Upon ${domain}'s pages, ${data.riddle}`;
         }
 
-        steps.push({
-          riddle: riddleData.riddle,
-          answer: riddleData.answer,
-          hints: riddleData.hints,
-          targetUrl: pageContent.url,
-          pathFromHome: pageContent.title
-        });
-
-        if (steps.length >= 8) break;
+        return {
+          riddle: data.riddle,
+          answer: data.answer,
+          hints: data.hints,
+          targetUrl: pc.url,
+          pathFromHome: pc.title
+        };
       } catch (err) {
-        console.error('[hunt] Failed to generate riddle:', err);
+        console.error('[hunt] Riddle AI failed, falling back:', err);
+        // basic fallback so user link still appears
+        return {
+          riddle: `Seek knowledge on ${domain}. Traverse to "${pc.title}" and discover its hidden truth.`,
+          answer: potentialAnswers[0] || pc.title,
+          hints: [
+            `Visit ${domain}`,
+            `Find the page titled “${pc.title}”`,
+            `Scroll until you spot the phrase starting “${(potentialAnswers[0] || pc.title).split(' ').slice(0, 4).join(' ')
+            }…”`,
+            'Copy that sentence exactly'
+          ],
+          targetUrl: pc.url,
+          pathFromHome: pc.title
+        };
       }
+    };
+
+    // 5a. user‑supplied pages first
+    for (const pc of allPageContent.filter(c =>
+      explicitSeeds.some(s => s.specificPage === c.url)
+    )) {
+      const step = await buildRiddle(pc);
+      if (step) steps.push(step);
     }
 
-    if (!steps.length) {
-      return res.status(500).json({
-        error: 'Could not generate riddles. Try a different topic.'
-      });
+    // 5b. fill remaining steps with extra pages
+    for (const pc of allPageContent.filter(
+      c => !explicitSeeds.some(s => s.specificPage === c.url)
+    )) {
+      if (steps.length >= MAX_STEPS) break;
+      const step = await buildRiddle(pc);
+      if (step) steps.push(step);
     }
 
-    /* ───────────────── 4. Response ──────────────────────────── */
-    res.json({
+    /*──────────────── 6.  Post‑check: every link included ───────────*/
+    const missing = explicitSeeds.filter(
+      es => !steps.some(s => s.targetUrl === es.specificPage)
+    );
+    if (missing.length) {
+      throw new Error(
+        `Could not generate riddles for provided link(s): ${missing
+          .map(m => m.specificPage)
+          .join(', ')}`
+      );
+    }
+
+    /*──────────────── 7.  Respond ───────────────────────────*/
+    return res.json({
       theme: topics,
       instructions:
         'Each riddle points to a specific webpage. The answer is an exact quote from that page. Use hints if needed – they get progressively more specific.',
@@ -392,12 +388,11 @@ Return JSON:
       error: err instanceof Error ? err.message : 'Unknown error occurred'
     });
   } finally {
-    // Always close Stagehand
     if (stagehand) {
       try {
         await stagehand.close();
-      } catch (err) {
-        console.error('[hunt] Error closing Stagehand:', err);
+      } catch (e) {
+        console.error('[hunt] Error closing Stagehand:', e);
       }
     }
   }

@@ -23,6 +23,16 @@ interface HuntClue {
   url?: string;
 }
 
+interface SupabaseClue {
+  text?: string;
+  riddle?: string;
+  hints?: string[];
+  hint?: string;
+  answer: string;
+  url?: string;
+  targetUrl?: string;
+}
+
 const Hunt = () => {
   const router = useRouter();
   const [huntData, setHuntData] = useState<HuntClue[]>([]);
@@ -58,18 +68,17 @@ const Hunt = () => {
         setError("Failed to load hunt. Try a different key.");
         return;
       }
-
-      const parsed: HuntClue[] = data.info.map((clue: any, idx: number) => ({
+      const parsed: HuntClue[] = (data.info as SupabaseClue[]).map((clue, idx) => ({
         id: idx,
-        text: clue.text || clue.riddle,
+        text: clue.text ?? clue.riddle ?? "",   // ← always a string
         hints:
-          clue.hints && clue.hints.length
+          clue.hints?.length
             ? clue.hints
             : clue.hint
               ? [clue.hint]
-              : [""],
-        answer: clue.answer,
-        url: clue.url || clue.targetUrl
+              : [""],                              // ← always array<string>
+        answer: clue.answer ?? "",               // (assuming answer is required)
+        url: clue.url ?? clue.targetUrl ?? ""    // ← pick one or fallback to ""
       }));
 
       setHuntData(parsed);
