@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { RotateCcw, Share, Plus } from "lucide-react";
+import { Share, Plus, Link as LinkIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { CompassStar } from "@/components/CompassStar";
 import { Button } from "@/components/ui/button";
@@ -20,42 +20,22 @@ const MountainBackground = () => {
         </linearGradient>
       </defs>
 
-      <path
-        d="M0 230 Q 360 90 720 230 T 1440 230 V440 H0 Z"
-        fill="url(#mountainFade)"
-        className="text-foreground"
-      />
-      <path
-        d="M0 270 Q 360 120 720 270 T 1440 270 V440 H0 Z"
-        fill="currentColor"
-        opacity={0.1}
-      />
-      <path
-        d="M0 310 Q 360 160 720 310 T 1440 310 V480 H0 Z"
-        fill="currentColor"
-        opacity={0.15}
-      />
-      <path
-        d="M0 350 Q 360 200 720 350 T 1440 350 V480 H0 Z"
-        fill="currentColor"
-        opacity={0.2}
-      />
+      <path d="M0 230 Q 360 90 720 230 T 1440 230 V440 H0 Z" fill="url(#mountainFade)" className="text-foreground" />
+      <path d="M0 270 Q 360 120 720 270 T 1440 270 V440 H0 Z" fill="currentColor" opacity={0.1} />
+      <path d="M0 310 Q 360 160 720 310 T 1440 310 V480 H0 Z" fill="currentColor" opacity={0.15} />
+      <path d="M0 350 Q 360 200 720 350 T 1440 350 V480 H0 Z" fill="currentColor" opacity={0.2} />
     </svg>
   );
 };
 
-export const Complete = () => {
+const Complete = () => {
   const router = useRouter();
 
   const query = (router.query.query as string) || "remote work tools";
   const totalTime = parseInt((router.query.totalTime as string) || "0");
-  const correctAnswers = parseInt(
-    (router.query.correctAnswers as string) || "0"
-  );
+  const correctAnswers = parseInt((router.query.correctAnswers as string) || "0");
   const totalClues = parseInt((router.query.totalClues as string) || "5");
-  const answers = router.query.answers
-    ? JSON.parse(router.query.answers as string)
-    : [];
+  const answers = router.query.answers ? JSON.parse(router.query.answers as string) : [];
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -66,11 +46,7 @@ export const Complete = () => {
   const handleScreenshotShare = async () => {
     try {
       const element = document.body;
-      const canvas = await html2canvas(element, {
-        useCORS: true,
-        // scrollY: -window.scrollY,
-      });
-
+      const canvas = await html2canvas(element, { useCORS: true });
       const dataUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
       link.href = dataUrl;
@@ -78,6 +54,15 @@ export const Complete = () => {
       link.click();
     } catch (error) {
       console.error("Failed to take screenshot:", error);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      alert("Link copied to clipboard!");
+    } catch (err) {
+      alert("Failed to copy link.");
     }
   };
 
@@ -100,9 +85,7 @@ export const Complete = () => {
 
         <div className="flex justify-center">
           <div className="bg-accent/20 rounded-2xl p-6 backdrop-blur-sm min-w-[280px] text-center">
-            <h2 className="text-foreground/70 font-serif text-xl mb-4">
-              your stats:
-            </h2>
+            <h2 className="text-foreground/70 font-serif text-xl mb-4">your stats:</h2>
             <div className="space-y-3 text-foreground/70">
               <div className="flex items-center justify-center gap-2 font-serif">
                 <span className="text-lg">⏱️</span>
@@ -126,11 +109,11 @@ export const Complete = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => router.push("/")}
+            onClick={handleCopyLink}
             className="text-foreground hover:text-accent hover:bg-accent/20 flex flex-col items-center gap-1"
           >
-            <RotateCcw className="w-5 h-5" />
-            <span className="text-xs">restart</span>
+            <LinkIcon className="w-5 h-5" />
+            <span className="text-xs">copy link</span>
           </Button>
 
           <Button
@@ -174,3 +157,5 @@ export const Complete = () => {
     </motion.div>
   );
 };
+
+export default Complete;
