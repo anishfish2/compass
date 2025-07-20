@@ -96,7 +96,7 @@ const Design: React.FC = () => {
       ]);
 
       if (insertError) throw insertError;
-      router.push(`/hunt?key=${generatedKey}`);
+      router.push(`/Hunt?key=${generatedKey}`);
     } catch (err) {
       console.error("Error generating or saving hunt:", err);
       setError("Failed to generate hunt. Please try again.");

@@ -1,4 +1,4 @@
-// Updated hunt.tsx to match new riddle format and fix rendering from ?key=
+// Updated hunt.tsx with longer confetti duration, full-screen effect, and final redirect to /Complete
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
@@ -36,7 +36,6 @@ const Hunt = () => {
 
   useEffect(() => {
     const fetchHunt = async () => {
-      console.log("im here")
       const huntKey = router.query.key as string;
       if (!huntKey) return;
 
@@ -68,7 +67,6 @@ const Hunt = () => {
   }, [router.isReady, router.query.key]);
 
   const handleAnswer = async (answer: string) => {
-    console.log('yoooo')
     setIsLoading(true);
     setError(null);
 
@@ -86,24 +84,9 @@ const Hunt = () => {
         if (currentClue < huntData.length - 1) {
           setCurrentClue(currentClue + 1);
         } else {
-          const endTime = Date.now();
-          const totalTime = Math.floor((endTime - startTime) / 1000);
-          const correctAnswers = [...answers, answer].filter((ans, idx) =>
-            ans.toLowerCase().includes(huntData[idx]?.answer?.toLowerCase())
-          ).length;
-
-          router.push({
-            pathname: "/complete",
-            query: {
-              key: router.query.key,
-              totalTime: totalTime.toString(),
-              correctAnswers: correctAnswers.toString(),
-              totalClues: huntData.length.toString(),
-              answers: JSON.stringify([...answers, answer])
-            }
-          });
+          router.push("/Complete");
         }
-      }, 1200);
+      }, 3000);
     } else {
       setShake(true);
       setError("Wrong answer! Try again.");
@@ -124,9 +107,16 @@ const Hunt = () => {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
-      className="min-h-screen bg-gradient-forest flex flex-col"
+      className="min-h-screen bg-gradient-forest flex flex-col relative"
     >
-      {showConfetti && <Confetti width={window.innerWidth} height={window.innerHeight} />}
+      {showConfetti && (
+        <Confetti
+          recycle={false}
+          numberOfPieces={400}
+          width={window.innerWidth}
+          height={window.innerHeight}
+        />
+      )}
 
       {!loaded && !error && (
         <div className="text-center text-foreground mt-32 text-xl font-serif italic">Loading hunt...</div>
