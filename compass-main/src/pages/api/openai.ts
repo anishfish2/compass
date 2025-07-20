@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextApiRequest, NextApiResponse } from 'next';
 import OpenAI from 'openai';
 
 // Initialize OpenAI client
@@ -25,36 +25,38 @@ interface ErrorResponse {
 }
 
 // GET handler (equivalent to your root route)
-export async function GET() {
-  return NextResponse.json({ Hello: 'World' });
+export async function GET(req: NextApiRequest, res: NextApiResponse) {
+  return res.json({ Hello: 'World' });
 }
 
 // POST handler (your OpenAI route)
-export async function POST(request: NextRequest) {
+export default async function handler(request: NextApiRequest, res: NextApiResponse) {
+  if (request.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  
   try {
     // Parse request body
-    const body: PromptRequest = await request.json();
+    const body: PromptRequest = request.body;
     const { prompt, max_tokens = 150, temperature = 0.7 } = body;
 
     // Validate request
     if (!prompt || typeof prompt !== 'string') {
-      return NextResponse.json(
+      return res.status(400).json(
         {
           error: 'Validation Error',
           detail: 'Prompt is required and must be a string'
-        } as ErrorResponse,
-        { status: 400 }
+        } as ErrorResponse
       );
     }
 
     // Check if API key exists
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
+      return res.status(500).json(
         {
           error: 'Configuration Error',
           detail: 'OpenAI API key not configured'
-        } as ErrorResponse,
-        { status: 500 }
+        } as ErrorResponse
       );
     }
 
@@ -71,12 +73,11 @@ export async function POST(request: NextRequest) {
     const messageContent = response.choices[0]?.message?.content;
     
     if (!messageContent) {
-      return NextResponse.json(
+      return res.status(500).json(
         {
           error: 'OpenAI Error',
           detail: 'No response received from OpenAI'
-        } as ErrorResponse,
-        { status: 500 }
+        } as ErrorResponse
       );
     }
 
@@ -87,49 +88,51 @@ export async function POST(request: NextRequest) {
       model: response.model
     };
 
-    return NextResponse.json(successResponse);
+    return res.json(successResponse);
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('OpenAI API Error:', error);
 
+    // Type guard for error with status property
+    const isErrorWithStatus = (err: unknown): err is { status: number; message?: string } => {
+      return typeof err === 'object' && err !== null && 'status' in err;
+    };
+
     // Handle specific OpenAI errors
-    if (error.status === 401) {
-      return NextResponse.json(
+    if (isErrorWithStatus(error) && error.status === 401) {
+      return res.status(401).json(
         {
           error: 'Authentication Error',
           detail: 'Invalid OpenAI API key'
-        } as ErrorResponse,
-        { status: 401 }
+        } as ErrorResponse
       );
     }
 
-    if (error.status === 429) {
-      return NextResponse.json(
+    if (isErrorWithStatus(error) && error.status === 429) {
+      return res.status(429).json(
         {
           error: 'Rate Limit Error',
           detail: 'OpenAI rate limit exceeded'
-        } as ErrorResponse,
-        { status: 429 }
+        } as ErrorResponse
       );
     }
 
-    if (error.status) {
-      return NextResponse.json(
+    if (isErrorWithStatus(error) && error.status) {
+      return res.status(error.status).json(
         {
           error: 'OpenAI API Error',
           detail: error.message || 'Unknown OpenAI error'
-        } as ErrorResponse,
-        { status: error.status }
+        } as ErrorResponse
       );
     }
 
     // Handle unexpected errors
-    return NextResponse.json(
+    const errorMessage = error instanceof Error ? error.message : 'Unexpected error occurred';
+    return res.status(500).json(
       {
         error: 'Server Error',
-        detail: error.message || 'Unexpected error occurred'
-      } as ErrorResponse,
-      { status: 500 }
+        detail: errorMessage
+      } as ErrorResponse
     );
   }
-}
+} 

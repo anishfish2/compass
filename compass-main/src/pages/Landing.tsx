@@ -1,19 +1,59 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { CompassStar } from "@/components/CompassStar";
 import { AnswerInput } from "@/components/AnswerInput";
+
 
 export const Landing = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [rotation, setRotation] = useState(0);
   const compassRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
+  const router = useRouter();
+
+  const generateQuiz = async (query: string) => {
+    try {
+      setIsLoading(true);
+
+      console.log("Generating quiz for query:", query);
+
+      const response = await fetch("/api/generate_quiz", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt: query }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate quiz");
+      }
+
+      const data = await response.json();
+      console.log("Generated quiz data:", data);
+
+      // Navigate to hunt with the generated quiz data
+      router.push({
+        pathname: "/hunt",
+        query: {
+          query,
+          quizData: JSON.stringify(data.collectedTexts),
+        },
+      });
+    } catch (error) {
+      console.error("Error generating quiz:", error);
+      // Fallback to original behavior
+      router.push({
+        pathname: "/hunt",
+        query: { query },
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleStartHunt = async (query: string) => {
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    navigate("/hunt", { state: { query } });
+    await generateQuiz(query);
   };
 
   useEffect(() => {
@@ -38,7 +78,7 @@ export const Landing = () => {
 
   return (
     <div className="min-h-screen bg-gradient-forest flex flex-col items-center justify-center p-6">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
@@ -46,7 +86,14 @@ export const Landing = () => {
       >
         <div className="space-y-4">
           {/* Compass stays in place but rotates */}
-          <div className="mx-auto" ref={compassRef} style={{ transform: `rotate(${rotation}deg)`, transition: "transform 0.1s ease-out" }}>
+          <div
+            className="mx-auto"
+            ref={compassRef}
+            style={{
+              transform: `rotate(${rotation}deg)`,
+              transition: "transform 0.1s ease-out",
+            }}
+          >
             <CompassStar size="lg" />
           </div>
           <div>

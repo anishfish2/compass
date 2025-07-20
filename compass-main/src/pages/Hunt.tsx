@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useRouter } from "next/router";
 import { motion } from "framer-motion";
 import { CompassStar } from "@/components/CompassStar";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -43,14 +43,13 @@ const huntData = {
 };
 
 export const Hunt = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const router = useRouter();
   const [currentClue, setCurrentClue] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
   const [startTime] = useState(Date.now());
   const [isLoading, setIsLoading] = useState(false);
 
-  const query = location.state?.query || "remote work tools";
+  const query = (router.query.query as string) || "remote work tools";
 
   const handleAnswer = async (answer: string) => {
     setIsLoading(true);
@@ -71,13 +70,14 @@ export const Hunt = () => {
         ans.toLowerCase().includes(huntData.clues[idx].answer.toLowerCase())
       ).length;
       
-      navigate("/complete", {
-        state: {
+      router.push({
+        pathname: '/complete',
+        query: {
           query,
-          totalTime,
-          correctAnswers,
-          totalClues: huntData.clues.length,
-          answers: newAnswers
+          totalTime: totalTime.toString(),
+          correctAnswers: correctAnswers.toString(),
+          totalClues: huntData.clues.length.toString(),
+          answers: JSON.stringify(newAnswers)
         }
       });
     }

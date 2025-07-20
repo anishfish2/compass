@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useRouter } from "next/router";
 import { RotateCcw, Share, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { CompassStar } from "@/components/CompassStar";
@@ -6,16 +6,17 @@ import { Button } from "@/components/ui/button";
 import html2canvas from "html2canvas";
 
 export const Complete = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
+  const router = useRouter();
 
-  const {
-    query = "remote work tools",
-    totalTime = 0,
-    correctAnswers = 0,
-    totalClues = 5,
-    answers = [],
-  } = location.state || {};
+  const query = (router.query.query as string) || "remote work tools";
+  const totalTime = parseInt((router.query.totalTime as string) || "0");
+  const correctAnswers = parseInt(
+    (router.query.correctAnswers as string) || "0"
+  );
+  const totalClues = parseInt((router.query.totalClues as string) || "5");
+  const answers = router.query.answers
+    ? JSON.parse(router.query.answers as string)
+    : [];
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -30,7 +31,7 @@ export const Complete = () => {
       const element = document.body;
       const canvas = await html2canvas(element, {
         useCORS: true,
-        scrollY: -window.scrollY, // capture fixed position elements
+        // scrollY: -window.scrollY, // capture fixed position elements
       });
 
       const dataUrl = canvas.toDataURL("image/png");
@@ -88,7 +89,7 @@ export const Complete = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/")}
+            onClick={() => router.push("/")}
             className="text-foreground hover:text-accent hover:bg-accent/20 flex flex-col items-center gap-1"
           >
             <RotateCcw className="w-5 h-5" />
@@ -108,7 +109,7 @@ export const Complete = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/")}
+            onClick={() => router.push("/")}
             className="text-foreground hover:text-accent hover:bg-accent/20 flex flex-col items-center gap-1"
           >
             <Plus className="w-5 h-5" />
