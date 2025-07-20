@@ -1,4 +1,4 @@
-// Updated hunt.tsx for new riddle format
+// Updated hunt.tsx to match new riddle format and fix rendering from ?key=
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
@@ -34,10 +34,10 @@ const Hunt = () => {
   const [shake, setShake] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  const huntKey = router.query.key as string;
-
   useEffect(() => {
     const fetchHunt = async () => {
+      console.log("im here")
+      const huntKey = router.query.key as string;
       if (!huntKey) return;
 
       const { data, error } = await supabase
@@ -47,16 +47,17 @@ const Hunt = () => {
         .single();
 
       if (error || !data?.info) {
+        console.error("Failed to load hunt:", error);
         setError("Failed to load hunt. Try a different key.");
         return;
       }
 
       const parsed: HuntClue[] = data.info.map((clue: any, idx: number) => ({
         id: idx,
-        text: clue.riddle,
-        hint: clue.hints?.[0] || "",
+        text: clue.text || clue.riddle,
+        hint: clue.hint || clue.hints?.[0] || "",
         answer: clue.answer,
-        url: clue.targetUrl
+        url: clue.url || clue.targetUrl
       }));
 
       setHuntData(parsed);
@@ -64,9 +65,10 @@ const Hunt = () => {
     };
 
     if (router.isReady) fetchHunt();
-  }, [router.isReady, huntKey]);
+  }, [router.isReady, router.query.key]);
 
   const handleAnswer = async (answer: string) => {
+    console.log('yoooo')
     setIsLoading(true);
     setError(null);
 
@@ -93,7 +95,7 @@ const Hunt = () => {
           router.push({
             pathname: "/complete",
             query: {
-              key: huntKey,
+              key: router.query.key,
               totalTime: totalTime.toString(),
               correctAnswers: correctAnswers.toString(),
               totalClues: huntData.length.toString(),
