@@ -10,6 +10,13 @@ import { TrailMap } from "@/components/TrailMap";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
+
+interface ApiClue {
+  riddle: string;
+  hints: string[];
+  answer: string;
+  targetUrl?: string;
+}
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -74,7 +81,7 @@ const Design: React.FC = () => {
         })
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as { hunt: ApiClue[] };
       const clues = data.hunt;
       console.log("data: ", data);
       console.log(clues);
