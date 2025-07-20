@@ -334,9 +334,9 @@ DO NOT repeat any of these user links: ${links.join(', ') || '(none)'}`,
       if (potentialAnswers.length) {
         data = await askOpenAIForJson(
           `Craft a 3‑4 sentence **poetic** riddle that references:
- The domain (“${domain}”) explicitly
+ The domain (“${domain}") explicitly
  Navigation clues (breadcrumbs / headings) in metaphor
- A specific fact below chosen as the “answer”
+ A specific fact below chosen as the “answer"
 
 Possible facts:
 ${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join('\n')}
@@ -347,20 +347,20 @@ Return JSON with keys riddle, answer, hints.`,
       } else {
         // Generic fallback when no long fact is available
         data = {
-          riddle: `On ${domain}, within the page “${pc.title}”, lies a phrase worth finding.`,
+          riddle: `On ${domain}, within the page “${pc.title}", lies a phrase worth finding.`,
           answer: fallbackAnswer,
           hints: [
             `Visit ${domain}`,
-            `Open the page titled “${pc.title}”`,
+            `Open the page titled “${pc.title}"`,
             'Scan the opening paragraphs for the highlighted phrase',
-            `The answer starts with “${fallbackAnswer.split(' ').slice(0, 6).join(' ')}”`
+            `The answer starts with “${fallbackAnswer.split(' ').slice(0, 6).join(' ')}"`
           ]
         };
       }
 
       // Harden against missing fields
       if (typeof data.riddle !== 'string' || !data.riddle.trim()) {
-        data.riddle = `Upon ${domain}'s pages, uncover the hidden words of “${pc.title}”.`;
+        data.riddle = `Upon ${domain}'s pages, uncover the hidden words of “${pc.title}".`;
       }
       if (typeof data.answer !== 'string' || !data.answer.trim()) {
         data.answer = fallbackAnswer;
@@ -368,7 +368,7 @@ Return JSON with keys riddle, answer, hints.`,
       if (!Array.isArray(data.hints) || !data.hints.length) {
         data.hints = [
           `Visit ${domain}`,
-          `Open “${pc.title}”`,
+          `Open “${pc.title}"`,
           `Look for: ${fallbackAnswer.slice(0, 30)}…`,
           'Copy that sentence exactly'
         ];
