@@ -334,7 +334,7 @@ DO NOT repeat any of these user links: ${links.join(", ") || "(none)"}`,
       // Ask the model only if we have at least ONE good fact
       let data: { riddle: string; answer: string; hints: string[] };
       if (potentialAnswers.length) {
-        data = await askOpenAIForJson(`Craft a 3‑4 sentence **poetic** riddle that references: The domain (“${domain}") explicitly, Navigation clues (breadcrumbs / headings) in metaphor, A specific fact below chosen as the “answer" Possible facts: ${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join("\n")} Return JSON with keys riddle, answer, hints.`, 1_200,);
+        data = await askOpenAIForJson(`Craft a 3-4 sentence **poetic** riddle that references: The domain ("${domain}") explicitly, Navigation clues (breadcrumbs / headings) in metaphor, A specific fact below chosen as the "answer" Possible facts: ${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join("\n")} Return JSON with keys riddle, answer, hints.`, 1_200,);
       } else {
         // Generic fallback when no long fact is available
         data = {
