@@ -3,18 +3,20 @@ import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-interface AnswerInputProps {
+export interface AnswerInputProps {
   placeholder: string;
   onSubmit: (answer: string) => void;
   isLoading?: boolean;
+  error?: boolean;           // ➊ new
   className?: string;
 }
 
-export const AnswerInput = ({ 
-  placeholder, 
-  onSubmit, 
+export const AnswerInput = ({
+  placeholder,
+  onSubmit,
   isLoading = false,
-  className 
+  error = false,
+  className
 }: AnswerInputProps) => {
   const [value, setValue] = useState("");
 
@@ -27,7 +29,12 @@ export const AnswerInput = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className={cn("relative", className)} style={{ width: '100%', maxWidth: 'none' }}>
+    <form
+      onSubmit={handleSubmit}
+      className={cn("relative", className, error && "animate-shake")}   // ➋
+      style={{ width: "100%", maxWidth: "none" }}
+    >
+
       <style>{`
         form { max-width: none !important; width: 600px !important; }
       `}</style>

@@ -34,7 +34,7 @@ export default async function handler(request: NextApiRequest, res: NextApiRespo
   if (request.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
-  
+
   try {
     // Parse request body
     const body: PromptRequest = request.body;
@@ -71,7 +71,7 @@ export default async function handler(request: NextApiRequest, res: NextApiRespo
     });
 
     const messageContent = response.choices[0]?.message?.content;
-    
+
     if (!messageContent) {
       return res.status(500).json(
         {

@@ -62,8 +62,8 @@ const Design: React.FC = () => {
 
     setIsGenerating(true);
     setError("");
-
     try {
+      console.log(generalTopics, customLinks, additionalHints);
       const res = await fetch("/api/generate_quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,14 +76,14 @@ const Design: React.FC = () => {
 
       const data = await res.json();
       const clues = data.hunt;
-      console.log("data: ",data);
+      console.log("data: ", data);
       console.log(clues);
       if (!clues || clues.length === 0) throw new Error("No clues returned");
 
-      const formattedClues = clues.map((c: any, idx: number) => ({
+      const formattedClues = clues.map((c, idx) => ({
         id: idx,
         text: c.riddle,
-        hint: c.hints?.[0] || "",
+        hints: c.hints,            // keep them all
         answer: c.answer,
         url: c.targetUrl
       }));
@@ -96,7 +96,7 @@ const Design: React.FC = () => {
       ]);
 
       if (insertError) throw insertError;
-      router.push(`/hunt?key=${generatedKey}`);
+      router.push(`/Hunt?key=${generatedKey}`);
     } catch (err) {
       console.error("Error generating or saving hunt:", err);
       setError("Failed to generate hunt. Please try again.");

@@ -95,9 +95,14 @@ export default async function handler(
 ) {
   if (req.method !== 'POST')
     return res.status(405).json({ error: 'Method not allowed' });
-
-  const schema = z.object({ prompt: z.string().min(3) });
-  const { prompt } = schema.parse(req.body);
+  console.log("YUH", req.body);
+  const schema = z.object({
+    topics: z.string(),
+    links: z.array(z.string()).optional(),
+    hints: z.string().optional()
+  });
+  const { topics, links, hints } = schema.parse(req.body);
+  const prompt = topics;
 
   const steps: ScavengerStep[] = [];
 
@@ -118,7 +123,7 @@ export default async function handler(
     // ─── 1. Ask OpenAI for candidate pages ─────────────────────────
     const research = (await askOpenAIForJson(
       `
-      Research websites for a scavenger hunt about "${prompt}".
+      Research websites for a scavenger hunt about "${prompt}". If links are provided in ${links}, use them. Also include ${hints} in your research.
       Find 5 interesting websites with specific pages (not just homepages) that would create an educational journey.
       Each site should have pages that are 1‑2 clicks from the homepage.
 

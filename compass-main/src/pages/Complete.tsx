@@ -5,11 +5,11 @@ import { CompassStar } from "@/components/CompassStar";
 import { Button } from "@/components/ui/button";
 import html2canvas from "html2canvas";
 import { BackgroundStars } from "@/components/BackgroundStars";
-
+import { useState } from "react";
 const MountainBackground = () => {
   return (
     <svg
-      className="absolute bottom-0 left-0 w-full h-[28vh] z-0 pointer-events-none"
+      className="absolute bottom-0 left-0 w-full h-[40vh] z-0 pointer-events-none"
       viewBox="0 0 1440 440"
       preserveAspectRatio="xMidYMax slice"
     >
@@ -36,7 +36,6 @@ const Complete = () => {
   const correctAnswers = parseInt((router.query.correctAnswers as string) || "0");
   const totalClues = parseInt((router.query.totalClues as string) || "5");
   const answers = router.query.answers ? JSON.parse(router.query.answers as string) : [];
-
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -57,21 +56,30 @@ const Complete = () => {
     }
   };
 
+
   const handleCopyLink = async () => {
+    const code = router.query.key as string | undefined;
+
+    if (!code) {
+      alert("No room code found in the URL.");
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(window.location.href);
-      alert("Link copied to clipboard!");
-    } catch (err) {
-      alert("Failed to copy link.");
+      await navigator.clipboard.writeText(code);
+      alert(`Room code "${code}" copied to clipboard!`);
+    } catch {
+      alert("Failed to copy room code.");
     }
   };
+
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.6 }}
-      className="relative min-h-screen bg-gradient-forest flex flex-col items-center justify-center p-6 overflow-hidden"
+      className="relative min-h-screen bg-gradient-forest flex flex-col items-center justify-center p-6 overflow-visible"
     >
       <MountainBackground />
       <BackgroundStars />
@@ -113,7 +121,7 @@ const Complete = () => {
             className="text-foreground hover:text-accent hover:bg-accent/20 flex flex-col items-center gap-1"
           >
             <LinkIcon className="w-5 h-5" />
-            <span className="text-xs">copy link</span>
+            <span className="text-xs">copy code</span>
           </Button>
 
           <Button

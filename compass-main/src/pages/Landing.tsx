@@ -82,7 +82,7 @@ const Landing = () => {
         return;
       }
 
-      router.push(`/hunt?key=${huntKey}`);
+      router.push(`/Hunt?key=${huntKey}`);
     } catch (err) {
       console.error("Unexpected error:", err);
       setError("An unexpected error occurred – please try again");
@@ -201,7 +201,7 @@ const Landing = () => {
 
               <div className="space-y-2">
                 <AnswerInput
-                  placeholder="enter a hunt key or shareable link..."
+                  placeholder="enter a hunt key..."
                   onSubmit={handleShareableLinkWrapper}
                   isLoading={isLoading}
                   className="max-w-md mx-auto text-base placeholder:text-foreground/50 placeholder:text-md placeholder:italic placeholder:font-serif font-serif"
