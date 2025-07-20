@@ -334,9 +334,9 @@ DO NOT repeat any of these user links: ${links.join(', ') || '(none)'}`,
       if (potentialAnswers.length) {
         data = await askOpenAIForJson(
           `Craft a 3‑4 sentence **poetic** riddle that references:
-- The domain (“${domain}”) explicitly
-- Navigation clues (breadcrumbs / headings) in metaphor
-- A specific fact below chosen as the “answer”
+ The domain (“${domain}”) explicitly
+ Navigation clues (breadcrumbs / headings) in metaphor
+ A specific fact below chosen as the “answer”
 
 Possible facts:
 ${potentialAnswers.map((t, i) => `${i + 1}. "${t}"`).join('\n')}
