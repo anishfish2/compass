@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
@@ -69,6 +68,7 @@ const Hunt = () => {
         return;
       }
       const parsed: HuntClue[] = (data.info as SupabaseClue[]).map((clue, idx) => ({
+
         id: idx,
         text: clue.text ?? clue.riddle ?? "",   // ← always a string
         hints:
