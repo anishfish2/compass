@@ -106,7 +106,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const research = JSON.parse(researchContent);
 
     // Generate riddles for each site
-    for (let i = 0; i < Math.min(5, research.sites.length); i++) {
+    for (let i = 0; i < Math.min(2, research.sites.length); i++) {
       const site = research.sites[i];
       const targetUrl = `https://${site.specificPage}`;
 

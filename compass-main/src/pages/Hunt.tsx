@@ -1,4 +1,4 @@
-// File: pages/hunt.tsx
+// Updated hunt.tsx for new riddle format
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { motion } from "framer-motion";
@@ -51,13 +51,19 @@ const Hunt = () => {
         return;
       }
 
-      setHuntData(data.info);
+      const parsed: HuntClue[] = data.info.map((clue: any, idx: number) => ({
+        id: idx,
+        text: clue.riddle,
+        hint: clue.hints?.[0] || "",
+        answer: clue.answer,
+        url: clue.targetUrl
+      }));
+
+      setHuntData(parsed);
       setLoaded(true);
     };
 
-    if (router.isReady) {
-      fetchHunt();
-    }
+    if (router.isReady) fetchHunt();
   }, [router.isReady, huntKey]);
 
   const handleAnswer = async (answer: string) => {
@@ -130,26 +136,22 @@ const Hunt = () => {
 
       {loaded && !error && currentClueData && (
         <>
-          {/* Hint */}
           <div className="px-6 mb-8">
             <HintButton hint={currentClueData.hint} />
           </div>
 
-          {/* Main Content */}
           <div className="flex-grow flex justify-center px-6">
             <div className="flex flex-col justify-center items-center w-full max-w-2xl text-center space-y-8 min-h-[calc(100vh-200px)]">
               <CompassStar size="md" className="mx-auto" />
               <p className="text-foreground text-lg md:text-xl leading-relaxed font-serif">
                 {currentClueData.text}
               </p>
-
               <AnswerInput
                 placeholder="enter your answer here ..."
                 onSubmit={handleAnswer}
                 isLoading={isLoading}
                 error={shake}
               />
-
               <ProgressBar
                 currentStep={currentClue + 1}
                 totalSteps={huntData.length}
@@ -158,18 +160,13 @@ const Hunt = () => {
             </div>
           </div>
 
-          {/* Timer */}
           <div className="p-6">
             <div className="flex items-center text-foreground text-sm">
               <div className="w-3 h-3 bg-accent rounded-full mr-2" />
               <span>
-                {Math.floor((Date.now() - startTime) / 1000 / 60)
-                  .toString()
-                  .padStart(2, "0")}
+                {Math.floor((Date.now() - startTime) / 1000 / 60).toString().padStart(2, "0")}
                 :
-                {Math.floor(((Date.now() - startTime) / 1000) % 60)
-                  .toString()
-                  .padStart(2, "0")}
+                {Math.floor(((Date.now() - startTime) / 1000) % 60).toString().padStart(2, "0")}
               </span>
             </div>
           </div>
@@ -178,26 +175,13 @@ const Hunt = () => {
 
       <style jsx global>{`
         @keyframes shake {
-          0% {
-            transform: translateX(0);
-          }
-          25% {
-            transform: translateX(-5px);
-          }
-          50% {
-            transform: translateX(5px);
-          }
-          75% {
-            transform: translateX(-5px);
-          }
-          100% {
-            transform: translateX(0);
-          }
+          0% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          50% { transform: translateX(5px); }
+          75% { transform: translateX(-5px); }
+          100% { transform: translateX(0); }
         }
-
-        .animate-shake {
-          animation: shake 0.4s ease;
-        }
+        .animate-shake { animation: shake 0.4s ease; }
       `}</style>
     </motion.div>
   );
