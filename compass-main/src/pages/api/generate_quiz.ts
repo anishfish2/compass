@@ -59,47 +59,32 @@ function getDomain(rawUrl: string): string {
  * Unified helper that automatically chooses the right OpenAI endpoint
  * (chat / completions / responses) and always returns parsed JSON.
  */
+
+/*──────────────── askOpenAIForJson ──────────────────────────*/
 async function askOpenAIForJson(
   prompt: string,
-  maxTokens = 2000,
+  maxTokens = 2_000,
   model = OPENAI_RESEARCH_MODEL
 ) {
   const jsonPrompt = `${prompt.trim()}\n\nReturn only valid JSON.`;
 
-  // 1️⃣ Decide which endpoint to hit
-  const isResponsesOnly =
-    /^o[34].*-deep-research/i.test(model) || model.endsWith('-deep-research');
-
+  // 1️⃣ choose endpoint
+  const isResponsesOnly = /^o[34].*-deep-research/i.test(model);
   const endpoint = isResponsesOnly
     ? 'https://api.openai.com/v1/responses'
     : /^o[34]-/.test(model)
       ? 'https://api.openai.com/v1/completions'
       : 'https://api.openai.com/v1/chat/completions';
 
-  // 2️⃣ Build the payload
-  const body = isResponsesOnly
-    ? {
-      model,
-      input: jsonPrompt,
-      max_tokens: maxTokens,
-      response_format: { type: 'json_object' }
-    }
-    : endpoint.includes('/completions')
-      ? {
-        model,
-        prompt: jsonPrompt,
-        max_tokens: maxTokens,
-        temperature: 0,
-        response_format: { type: 'json_object' }
-      }
-      : {
-        model,
-        messages: [{ role: 'user', content: jsonPrompt }],
-        max_tokens: maxTokens,
-        response_format: { type: 'json_object' }
-      };
+  // 2️⃣ build payload
+  const body = {
+    model,
+    input: jsonPrompt,
+    max_completion_tokens: maxTokens,   // ← rename
+    text: { format: { type: 'json_object' } }
+  };
 
-  // 3️⃣ Fire the request
+  // 3️⃣ fire request
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -108,27 +93,25 @@ async function askOpenAIForJson(
     },
     body: JSON.stringify(body)
   });
-
   if (!res.ok) {
     const errTxt = await res.text();
     console.error('[OpenAI] API error:', errTxt);
     throw new Error(`OpenAI API error (${res.status})`);
   }
 
+  // 4️⃣ extract raw JSON text
   const data = await res.json();
-
-  // 4️⃣ Extract raw JSON text
   const raw = isResponsesOnly
     ? data.output_text ?? '{}'
     : data.choices?.[0]?.message?.content ??
     data.choices?.[0]?.text ??
     '{}';
 
-  // Remove any stray markdown fences the model might emit
   const jStart = raw.indexOf('{');
   const jEnd = raw.lastIndexOf('}');
   return JSON.parse(raw.slice(jStart, jEnd + 1));
 }
+
 
 
 

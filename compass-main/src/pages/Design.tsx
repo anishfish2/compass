@@ -1,8 +1,8 @@
 // Updated Design.tsx to match new clue structure from /api/generate_quiz
 import { useState, useRef } from "react";
 import { useRouter } from "next/router";
-import { motion } from "framer-motion";
-import { CompassStar } from "@/components/CompassStar";
+// import { motion } from "framer-motion";
+// import { CompassStar } from "@/components/CompassStar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ const Design: React.FC = () => {
   const [generalTopics, setGeneralTopics] = useState("");
   const [additionalHints, setAdditionalHints] = useState("");
   const [error, setError] = useState<string>("");
-  const [copied, setCopied] = useState<boolean>(false);
+  // const [copied, setCopied] = useState<boolean>(false);
 
   const validateInputs = () => {
     const hasCustomLinks = customLinks.some(link => link.trim());
