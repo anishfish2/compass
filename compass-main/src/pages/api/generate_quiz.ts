@@ -1,13 +1,11 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { Stagehand } from '@browserbasehq/stagehand';
 import { z } from 'zod';
 
-// Initialize Claude (Anthropic)
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
+// ──────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────
 interface PageInfo {
   url: string;
   domain: string;
@@ -25,244 +23,234 @@ interface ScavengerStep {
   pathFromHome: string;
 }
 
-// Helper to clean URLs
-function cleanUrl(url: string): string {
+interface ResearchSite {
+  domain: string;
+  specificPage: string;
+  pathFromHome: string;
+  interestingFact: string;
+  whyRelevant: string;
+}
+
+// ──────────────────────────────────────────
+// Utils
+// ──────────────────────────────────────────
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+/** Ask ChatGPT for JSON, retrying until it actually returns JSON */
+async function askOpenAIForJson(userPrompt: string, maxTokens = 1500, maxTries = 3) {
+  let prompt = userPrompt;
+  for (let attempt = 1; attempt <= maxTries; attempt++) {
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',                     // fast + GPT‑4 class quality
+      response_format: { type: 'json_object' }, // tells OpenAI to emit JSON
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const raw = res.choices[0].message.content?.trim() || '';
+    try {
+      return JSON.parse(raw);
+    } catch {
+      console.warn(`[hunt] OpenAI reply not JSON (try ${attempt}/${maxTries})`);
+      prompt =
+        `REMINDER: Return ONLY valid JSON. No prose.\n\n` + userPrompt;
+    }
+  }
+  throw new Error('OpenAI failed to return valid JSON after several attempts.');
+}
+
+/** HEAD‑request reachability test (follows redirects) */
+async function urlExists(url: string): Promise<boolean> {
   try {
-    const urlObj = new URL(url);
-    return `${urlObj.protocol}//${urlObj.hostname}${urlObj.pathname}`.replace(/\/$/, '');
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+    return res.ok && res.status < 400;
   } catch {
-    return url;
+    return false;
   }
 }
 
-// Helper to get domain
 function getDomain(url: string): string {
   try {
-    return new URL(url).hostname.replace('www.', '');
+    return new URL(url).hostname.replace(/^www\./, '');
   } catch {
     return '';
   }
 }
 
+// ──────────────────────────────────────────
+// Handler
+// ──────────────────────────────────────────
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST')
     return res.status(405).json({ error: 'Method not allowed' });
-  }
 
-  const { prompt } = req.body;
+  const schema = z.object({ prompt: z.string().min(3) });
+  const { prompt } = schema.parse(req.body);
 
   const steps: ScavengerStep[] = [];
-  const visitedDomains: string[] = [];
 
   try {
-    console.log('Starting scavenger hunt generation for theme:', prompt);
+    console.log('[hunt] Theme:', prompt);
 
-    // Initialize Stagehand
+    // ─── Stagehand / Browserbase set‑up ────────────────────────────
     const stagehand = new Stagehand({
       env: 'BROWSERBASE',
       apiKey: process.env.BROWSERBASE_API_KEY,
       projectId: process.env.BROWSERBASE_PROJECT_ID!,
-      modelName: 'claude-3-5-sonnet-20241022',
-      modelClientOptions: {
-        apiKey: process.env.ANTHROPIC_API_KEY,
-      },
+      modelName: 'gpt-4o-mini', // Stagehand will send tool calls to the same model
+      modelClientOptions: { apiKey: process.env.OPENAI_API_KEY }
     });
-
     await stagehand.init();
     const page = stagehand.page;
 
-    // Step 1: Research relevant websites for the theme
-    const researchMessage = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 1500,
-      messages: [{
-        role: 'user',
-        content: `Research websites for a scavenger hunt about "${prompt}".
+    // ─── 1. Ask OpenAI for candidate pages ─────────────────────────
+    const research = await askOpenAIForJson(`
+      Research websites for a scavenger hunt about "${prompt}".
+      Find 5 interesting websites with specific pages (not just homepages) that would create an educational journey.
+      Each site should have pages that are 1‑2 clicks from the homepage.
 
-        Find 5 interesting websites with specific pages (not just homepages) that would create an educational journey.
-        Each site should have pages that are 1-2 clicks from the homepage.
+      Return ONLY valid JSON:
+      {
+        "sites": [
+          {
+            "domain": "example.com",
+            "specificPage": "example.com/about/history",
+            "pathFromHome": "Click 'About Us' then 'Our History'",
+            "interestingFact": "Something unique on this page",
+            "whyRelevant": "How it relates to ${prompt}"
+          }
+        ]
+      }
+    `) as { sites: ResearchSite[] };
 
-        For example, for "food":
-        - Not just "mcdonalds.com" but "mcdonalds.com/us/en-us/about-us/our-history.html"
-        - Not just "wikipedia.org" but a specific interesting article
+    // ─── 2. Keep only reachable pages ─────────────────────────────
+    const reachableSites: ResearchSite[] = [];
+    for (const site of research.sites) {
+      const url = site.specificPage.startsWith('http')
+        ? site.specificPage
+        : `https://${site.specificPage}`;
 
-        Return ONLY valid JSON without markdown:
-        {
-          "sites": [
-            {
-              "domain": "example.com",
-              "specificPage": "example.com/about/history",
-              "pathFromHome": "Click 'About Us' then 'Our History'",
-              "interestingFact": "Something unique on this page",
-              "whyRelevant": "How it relates to ${prompt}"
-            }
-          ]
-        }`
-      }]
-    });
+      if (await urlExists(url)) {
+        reachableSites.push({ ...site, specificPage: url });
+        if (reachableSites.length === 5) break;
+      } else {
+        console.warn('[hunt] Filtered out unreachable URL:', url);
+      }
+    }
 
-    let researchContent = researchMessage.content[0].text;
-    researchContent = researchContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const research = JSON.parse(researchContent);
+    if (!reachableSites.length)
+      return res.status(422).json({ error: 'No valid URLs returned – try a different prompt.' });
 
-    // Generate riddles for each site
-    for (let i = 0; i < Math.min(5, research.sites.length); i++) {
-      const site = research.sites[i];
-      const targetUrl = `https://${site.specificPage}`;
+    // ─── 3. Build the hunt steps ──────────────────────────────────
+    for (const [idx, site] of reachableSites.entries()) {
+      const targetUrl = site.specificPage;
+      console.log(`[hunt] (${idx + 1}/5) Visiting: ${targetUrl}`);
 
-      console.log(`Step ${i + 1}: Creating riddle for ${targetUrl}`);
-
-      // Navigate to the target page to extract content
       try {
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        // Extract key information from the page
+        const currentDomain = await page.evaluate(
+          () => location.hostname.replace(/^www\./, '')
+        );
+        if (currentDomain !== getDomain(targetUrl))
+          throw new Error('Redirected off‑site – skipping.');
+
         const pageInfo: PageInfo = await page.evaluate(() => {
-          const keyFacts: string[] = [];
-          const uniqueContent: string[] = [];
+          const txt = (sel: string) =>
+            Array.from(document.querySelectorAll(sel)).map(
+              el => el.textContent?.trim() || ''
+            );
 
-          // Find specific facts (years, numbers, names)
-          document.querySelectorAll('p, li, h2, h3, div').forEach(el => {
-            const text = el.textContent?.trim() || '';
+          const keyFacts = txt('p, li, h2, h3')
+            .filter(t => /\b(19|20)\d{2}\b/.test(t) && t.length < 200)
+            .slice(0, 10);
 
-            // Look for years
-            if (text.match(/\b(19|20)\d{2}\b/) && text.length < 200) {
-              keyFacts.push(text);
-            }
+          const uniqueContent = txt('p, li')
+            .filter(
+              t =>
+                t.length > 30 &&
+                t.length < 150 &&
+                /(founded|created|invented|discovered|first|largest)/i.test(t)
+            )
+            .slice(0, 10);
 
-            // Look for specific names, places, or unique terms
-            if (text.length > 30 && text.length < 150 &&
-              (text.includes('founded') || text.includes('created') ||
-                text.includes('invented') || text.includes('discovered') ||
-                text.includes('first') || text.includes('largest'))) {
-              uniqueContent.push(text);
-            }
-          });
-
-          // Get navigation structure
-          const navLinks = Array.from(document.querySelectorAll('nav a, header a'))
-            .map(a => a.textContent?.trim() || '')
-            .filter(text => text.length > 0);
+          const navLinks = txt('nav a, header a').slice(0, 10);
 
           return {
-            url: window.location.href,
-            domain: window.location.hostname,
+            url: location.href,
+            domain: location.hostname,
             title: document.title,
-            keyFacts: [...new Set(keyFacts)].slice(0, 10),
-            navigationPaths: navLinks.slice(0, 10),
-            uniqueContent: [...new Set(uniqueContent)].slice(0, 10)
+            keyFacts: Array.from(new Set(keyFacts)),
+            navigationPaths: navLinks,
+            uniqueContent: Array.from(new Set(uniqueContent))
           };
         });
 
-        // Create a riddle that hints at the URL and asks about content
-        const riddleMessage = await anthropic.messages.create({
-          model: 'claude-opus-4-20250514',
-          max_tokens: 1500,
-          messages: [{
-            role: 'user',
-            content: `Create a riddle for a "${prompt}" scavenger hunt.
+        // ─── Ask OpenAI to craft the riddle ───────────────────────
+        const riddleData = await askOpenAIForJson(
+          `
+          Create a riddle for a "${prompt}" scavenger hunt.
 
-            Target URL: ${targetUrl}
-            Domain: ${site.domain}
-            Path from homepage: ${site.pathFromHome}
-            Page content includes: ${pageInfo.keyFacts.slice(0, 3).join(' | ')}
-            Unique content: ${pageInfo.uniqueContent.slice(0, 3).join(' | ')}
+          Target URL: ${targetUrl}
+          Domain: ${site.domain}
+          Path from homepage: ${site.pathFromHome}
+          Page content includes: ${pageInfo.keyFacts.slice(0, 3).join(' | ')}
+          Unique content: ${pageInfo.uniqueContent.slice(0, 3).join(' | ')}
 
-            Create a riddle that:
-            1. Hints at the domain/company without saying it directly
-            2. Hints at the specific section (history, about, products, etc.)
-            3. Asks a specific question that can be answered from the page
-            4. Is descriptive and engaging (3-4 sentences)
+          The riddle should:
+          1. Hint at the domain/company without naming it outright
+          2. Hint at the specific section (history, about, products, etc.)
+          3. Ask a specific question answerable from the page
+          4. Be 3‑4 engaging sentences
 
-            Example format:
-            "Journey to the golden arches empire, where billions have been served since 1940. Navigate to where their story began, through the chronicles of time. Once you arrive at their historical archives, tell me: In what year did Ray Kroc open the first franchised location?"
+          Include 4 hints from vague to obvious.
 
-            Also provide 4 hints from vague to obvious:
-            - Hint 1: Very cryptic
-            - Hint 2: Mentions the type of company/site
-            - Hint 3: Stronger clue about the specific page
-            - Hint 4: Almost gives away the domain and section
-
-            Return ONLY valid JSON without markdown:
-            {
-              "riddle": "The full riddle text",
-              "answer": "The specific answer from the page",
-              "hints": [
-                "Cryptic hint",
-                "Type of site hint",
-                "Page location hint",
-                "Obvious hint"
-              ]
-            }`
-          }]
-        });
-
-        let riddleContent = riddleMessage.content[0].text;
-        riddleContent = riddleContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const riddleData = JSON.parse(riddleContent);
+          Return ONLY valid JSON:
+          {
+            "riddle": "…",
+            "answer": "…",
+            "hints": ["…", "…", "…", "…"]
+          }
+        `,
+          1200
+        );
 
         steps.push({
           riddle: riddleData.riddle,
-          targetUrl: targetUrl,
+          targetUrl,
           answer: riddleData.answer,
           hints: riddleData.hints,
           pathFromHome: site.pathFromHome
         });
-
-        visitedDomains.push(getDomain(targetUrl));
-
-      } catch (error) {
-        console.error(`Failed to process ${targetUrl}:`, error);
-
-        // Create a fallback riddle without visiting the page
-        steps.push({
-          riddle: `Explore the world of ${prompt} at ${site.domain}. Navigate to their ${site.specificPage.includes('about') ? 'about section' : 'main content'} and discover an interesting fact about their journey.`,
-          targetUrl: targetUrl,
-          answer: "Check the main heading or first paragraph",
-          hints: [
-            `Think about ${prompt} and where you might learn more`,
-            `This site is dedicated to ${site.whyRelevant}`,
-            `Look for the '${site.pathFromHome.split(' ')[1]}' section`,
-            `Visit ${site.domain} and ${site.pathFromHome.toLowerCase()}`
-          ],
-          pathFromHome: site.pathFromHome
-        });
+      } catch (err) {
+        console.error('[hunt] Skipping page:', targetUrl, err);
       }
     }
 
     await stagehand.close();
 
-    console.log(steps);
+    if (!steps.length)
+      return res.status(500).json({ error: 'All candidate pages failed – try again.' });
 
-    // Return the complete scavenger hunt
-    return res.json({
+    // ─── 4. Respond ────────────────────────────────────────────────
+    res.json({
       theme: prompt,
-      instructions: "For each riddle: 1) Guess the website and navigate to the specific page described, 2) Find the answer to the question asked in the riddle",
-      hunt: steps.map((step, index) => ({
-        step: index + 1,
-        riddle: step.riddle,
-        targetUrl: step.targetUrl,
-        answer: step.answer,
-        hints: step.hints,
-        navigationHelp: step.pathFromHome
-      })),
-      totalSteps: steps.length
+      instructions:
+        'For each riddle: (1) Guess the site, (2) navigate via the hint path, (3) answer the question.',
+      totalSteps: steps.length,
+      hunt: steps.map((s, i) => ({
+        step: i + 1,
+        riddle: s.riddle,
+        targetUrl: s.targetUrl,
+        answer: s.answer,
+        hints: s.hints,
+        navigationHelp: s.pathFromHome
+      }))
     });
-
-  } catch (err: unknown) {
-    console.error('Error in scavenger hunt generation:', err);
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-    return res.status(500).json({ error: errorMessage });
+  } catch (err) {
+    console.error('[hunt] Fatal error:', err);
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 }
-
-
-
-
-
-
-
-
-
-
